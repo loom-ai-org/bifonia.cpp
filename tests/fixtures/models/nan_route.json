@@ -1,0 +1,6 @@
+{"version": 1, "model_type": "fixture", "config": {"lang": "pt-pt"},
+  "words": {
+    "para": {"route": "model", "margin_tau": 0.5, "senses": ["stop", "for"], "bias": {"stop": 1.0, "for": NaN}, "weights": {}},
+    "sede": {"route": "model", "margin_tau": -1.0, "senses": ["seat", "thirst"], "bias": {"seat": NaN, "thirst": NaN}, "weights": {}}
+  }
+}

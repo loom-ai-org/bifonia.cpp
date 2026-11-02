@@ -93,6 +93,8 @@ std::string guard(const std::function<std::string()>& f) {
         return "{\"err\":\"KeyError\"}";
     } catch (const bf::JSONDecodeError&) {
         return "{\"err\":\"JSONDecodeError\"}";
+    } catch (const bf::UnicodeDecodeError&) {
+        return "{\"err\":\"UnicodeDecodeError\"}";
     } catch (const bf::ValueError&) {
         return "{\"err\":\"ValueError\"}";
     } catch (const bf::FileNotFoundError&) {
@@ -365,9 +367,88 @@ std::string from_hex(const std::string& hex) {
     return out;
 }
 
+std::string fixtures_dir;
+
+std::string fixture_runs(const bf::model::SenseModel& m, const std::string& word, const Value& runs) {
+    std::vector<std::string> out;
+    for (const auto& run : runs.items) {
+        const std::string fn = run[0].str;
+        const bf::Words words = run[1].strings();
+        const long idx = static_cast<long>(run[2].integer);
+        const std::string got = guard([&] {
+            if (fn == "scores") return reprs(m.scores(word, words, idx));
+            if (fn == "predict") return J(m.predict(word, words, idx));
+            return J(repr(m.margin(word, words, idx)));
+        });
+        out.push_back(list({J(fn), J(words), J(idx), got}));
+    }
+    return list(out);
+}
+
+std::string fixture_record(const std::string& fn, const Value& v) {
+    const std::string head = "[" + J(fn) + ",";
+    if (fn == "fixture_voc") {
+        const std::string saved = bf::data_dir();
+        bf::set_data_dir(fixtures_dir + "/data");
+        const std::string got = guard([&] { return J(sorted(bf::vocab::voc(v[1].str, "pt-pt"))); });
+        bf::set_data_dir(saved);
+        return head + J(v[1].str) + "," + got + "]";
+    }
+    const std::string path = fixtures_dir + "/models/" + v[1].str;
+    if (fn == "fixture_model") {
+        return head + J(v[1].str) + "," + guard([&] {
+                   const auto m = bf::model::SenseModel::load(path);
+                   std::vector<std::string> words;
+                   for (const auto& item : m->words.items()) words.push_back(item.first);
+                   return list({J(m->model_type), J(m->lang), J(words)});
+               }) + "]";
+    }
+    const auto m = bf::model::SenseModel::load(path);
+    if (fn == "fixture_word") {
+        const std::string word = v[2].str;
+        return head + J(v[1].str) + "," + J(word) + "," + J(m->route(word)) + "," + J(repr(m->margin_tau(word))) +
+               "," + fixture_runs(*m, word, v[5]) + "]";
+    }
+    bf::set_sense_model(m);
+    std::string got;
+    if (fn == "fixture_guess") {
+        const bf::Words words = v[2].strings();
+        const long idx = static_cast<long>(v[3].integer);
+        got = head + J(v[1].str) + "," + J(words) + "," + J(idx) + "," +
+              guard([&] { return J(bf::guess_sense(words, idx)); }) + "]";
+    } else {
+        got = head + J(v[1].str) + "," + J(v[2].str) + "," +
+              guard([&] { return J(bf::add_extra_diacritics(v[2].str)); }) + "]";
+    }
+    bf::set_sense_model(bf::model::SenseModel::load());
+    return got;
+}
+
 std::string call_record(const Value& v) {
     const std::string fn = v[0].str;
     const std::string head = "[" + J(fn) + ",";
+    if (fn.rfind("fixture_", 0) == 0) return fixture_record(fn, v);
+    if (fn == "bytes_sets") {
+        bf::Words words;
+        for (const auto& h : v[1].strings()) words.push_back(from_hex(h));
+        bf::WordSet cue_set;
+        for (const auto& h : v[2].strings()) cue_set.insert(from_hex(h));
+        const long idx = static_cast<long>(v[3].integer);
+        bf::Dict<bf::WordSet> vocs;
+        vocs["v"] = cue_set;
+        return head + json_line::dump(v[1]) + "," + json_line::dump(v[2]) + "," + J(idx) + "," +
+               J(bf::text::cue_score(words, idx, cue_set, 4)) + "," +
+               reprs(bf::features::extract_features(words, idx, vocs)) + "]";
+    }
+    if (fn == "cue_repr_custom") {
+        const std::string t = v[1].str, other = v[2].str;
+        const bf::cues::Cue cue{t, other, opt(v[3])};
+        const bf::cues::CueRule one{other, {cue}}, none{t, {}}, two{t, {cue, bf::cues::Cue{other, t, {}}}};
+        return head + J(t) + "," + J(other) + "," + J(opt(v[3])) + "," +
+               J(std::vector<std::string>{bf::cues::repr(cue), bf::cues::repr(one), bf::cues::repr(none),
+                                          bf::cues::repr(two)})
+                   .substr(1);
+    }
     if (fn == "probe") {
         return head + J(v[1].str) + "," + json_line::dump(v[2]) + "," +
                guard([&] { return probe_result(v[1].str, v[2]); }) + "]";
@@ -544,9 +625,12 @@ struct Tally {
     long expected = 0, checked = 0, mismatches = 0;
 };
 
-Tally run(const std::string& path, const std::function<std::string(const std::string&)>& record) {
+// by_kind: count the mismatches of a calls file per record kind.
+Tally run(const std::string& path, const std::function<std::string(const std::string&)>& record,
+          bool by_kind = false) {
     const auto lines = json_line::read_gz_lines(path);
     Tally t;
+    std::map<std::string, long> kinds;
     if (lines.empty()) throw std::runtime_error("empty golden file " + path);
     t.expected = json_line::header_count(lines[0]);
     for (size_t i = 1; i < lines.size(); ++i) {
@@ -557,6 +641,10 @@ Tally run(const std::string& path, const std::function<std::string(const std::st
             got = std::string("exception: ") + e.what();
         }
         ++t.checked;
+        if (got != lines[i] && by_kind) {
+            const Value v = json_line::parse(lines[i]);
+            ++kinds[v[0].str == "probe" ? "probe " + v[1].str : v[0].str];
+        }
         if (got != lines[i] && ++t.mismatches <= 10) {
             std::cerr << "MISMATCH " << path << "\n  python: " << lines[i].substr(0, 2000)
                       << "\n  c++:    " << got.substr(0, 2000) << "\n";
@@ -564,6 +652,7 @@ Tally run(const std::string& path, const std::function<std::string(const std::st
     }
     std::cout << path.substr(path.find_last_of('/') + 1) << ": " << t.expected << " in, " << t.checked
               << " checked, " << t.mismatches << " mismatches\n";
+    for (const auto& [kind, n] : kinds) std::cout << "  " << kind << ": " << n << " mismatches\n";
     return t;
 }
 
@@ -581,6 +670,7 @@ int main(int argc, char** argv) {
         return 2;
     }
     const std::string dir = argv[1];
+    fixtures_dir = dir + "/../fixtures";
     Tally total;
     auto add = [&](const Tally& t) {
         total.expected += t.expected;
@@ -591,7 +681,7 @@ int main(int argc, char** argv) {
         const Value v = json_line::parse(line);
         return sentence_record(v[0].str, detail_of(v));
     }));
-    add(run(dir + "/calls.jsonl.gz", [](const std::string& line) { return call_record(json_line::parse(line)); }));
+    add(run(dir + "/calls.jsonl.gz", [](const std::string& line) { return call_record(json_line::parse(line)); }, true));
 
     // Route every model word to the model, so the model branch of guess_sense decides.
     auto forced = std::make_shared<bf::model::SenseModel>(*bf::model::SenseModel::load(bf::model::PERCEPTRON_PATH()));

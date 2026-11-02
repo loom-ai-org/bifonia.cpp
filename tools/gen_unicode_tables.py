@@ -76,7 +76,8 @@ def main():
                        ("kIsDigit", str.isdigit),
                        ("kMn", lambda c: unicodedata.category(c) == "Mn"),
                        ("kCaseIgnorable", ignorable),
-                       ("kCased", cased)):
+                       ("kCased", cased),
+                       ("kPrintable", str.isprintable)):
         rs = ranges(pred)
         w(f"static const char32_t {name}[{len(rs)}][2] = {{\n")
         for lo, hi in rs:

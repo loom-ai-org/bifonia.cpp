@@ -59,16 +59,18 @@ const Dict<WordSet>& load_structural_vocs(const std::string& lang) {
     std::lock_guard<std::mutex> lock(mutex);
     auto& slot = cache[lang];
     if (slot) return *slot;
-    slot = std::make_unique<Dict<WordSet>>();
+    // Built aside, so that a file that fails to decode leaves nothing cached.
+    auto vocs = std::make_unique<Dict<WordSet>>();
     const std::filesystem::path dir = std::filesystem::path(data_dir()) / "locale" / detail::py_lower(lang);
     for (const auto& name : STRUCTURAL_VOCS()) {
         std::string text;
         std::error_code ec;
         const auto path = dir / (name + ".voc");
         if (std::filesystem::exists(path, ec) && detail::read_file(path.string(), text)) {
-            (*slot)[name] = detail::parse_voc(text);
+            (*vocs)[name] = detail::parse_voc(text);
         }
     }
+    slot = std::move(vocs);
     return *slot;
 }
 

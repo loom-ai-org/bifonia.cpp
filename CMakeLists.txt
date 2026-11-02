@@ -48,6 +48,11 @@ target_compile_definitions(bifonia PRIVATE BIFONIA_DEFAULT_DATA_DIR="${_bifonia_
 set_target_properties(bifonia PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(bifonia PRIVATE -Wall -Wextra -Wpedantic)
+    # Python rounds each product and each sum. A fused multiply-add rounds once,
+    # so the model scores differ in the last bit on CPUs with FMA (aarch64,
+    # x86-64-v3). The flag is on the target, so a parent project that builds
+    # bifonia from source gets it too.
+    target_compile_options(bifonia PRIVATE -ffp-contract=off)
 endif()
 
 install(TARGETS bifonia EXPORT bifoniaTargets

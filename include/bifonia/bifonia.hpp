@@ -34,6 +34,10 @@ struct ValueError : std::invalid_argument {
 struct JSONDecodeError : ValueError {
     using ValueError::ValueError;
 };
+// Raised when a data file is not valid UTF-8.
+struct UnicodeDecodeError : ValueError {
+    using ValueError::ValueError;
+};
 struct KeyError : std::out_of_range {
     using std::out_of_range::out_of_range;
 };
@@ -249,8 +253,8 @@ struct WordEntry {
 class SenseModel {
 public:
     // Load and cache the model at path (default: PERCEPTRON_PATH()). Throws
-    // FileNotFoundError when the file is missing and JSONDecodeError when it
-    // is not valid JSON.
+    // FileNotFoundError when the file is missing, UnicodeDecodeError when it is
+    // not UTF-8 and JSONDecodeError when it is not valid JSON.
     static std::shared_ptr<const SenseModel> load(const std::optional<std::string>& path = std::nullopt);
 
     long version = 1;

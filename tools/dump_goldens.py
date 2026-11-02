@@ -202,6 +202,24 @@ def voc_sentences():
             yield text.fold(term) + " " + targets[0] + " " + text.fold(term)
 
 
+def extra_sentences():
+    """Rule branches that the other corpora do not reach."""
+    # the locative contractions before sede
+    for prep in ("na", "à", "numa", "pela", "duma", "da", "Duma", "DUMA"):
+        for tail in ("", " de água", " amor", " de poder", " da empresa", " tenho"):
+            yield f"{prep} sede{tail}"
+    # a left neighbour whose last three code points are not three bytes
+    for left in ("çia", "ãia", "çía", "ßia", "xia", "eia", "ia", "çiã"):
+        for w in ("para", "sede", "molho", "bola", "corte", "forma", "pelo"):
+            yield f"{left} {w} de água"
+    # proper_flags does not lowercase and tokenize does: İ splits a token, the
+    # flags shift, and a replacement lands on the next word
+    for h in ("seco", "para", "sede", "molho", "pelo", "corte", "acordo", "jogo"):
+        for t in ("ǅ", "Ǆ", "ǆ", "ᾈ", "ᾀ", "Σ", "É", "ß", "x", "X", "1", "ǲ", "Ǳ", "ﬁ", "Ⅻ", "ⅻ", "ǈ"):
+            yield f"İ{h} {t} x"
+            yield f"x İ{h} {t}"
+
+
 FUZZ_PUNCT = (".", ",", ";", ":", "!", "?", "-", " -", "...", "!?", "…", "«", "»", "'", '"',
               "(", ")", "—", "–", "_")
 FUZZ_EXTRA = ("İstanbul", "ǅemal", "Σίσυφος", "ΣΑΣ", "ß", "ﬁm", "１２", "١٢", "²", "Ⅻ", "1_000",
@@ -306,7 +324,9 @@ NUMBERS = ("0", "1", "12", "-1", "+1", "1.5", ".5", "5.", "1e5", "1E5", "1e+5", 
            "-inf", "+inf", "infinity", "INFINITY", "-Infinity", "infin", "nan", "NaN", "-nan", "+nan",
            "nan0", "١٢", "１２", "١.٥", "²", "Ⅻ", "½", "x1", "1x", "0x10", "1e999", "-1e999", "00",
            "0_0", "١_٢", "1 ", " 1", "1 ", "dois", "três", "mil", "três.", "-", "", ".", "-.5",
-           "1.5e3", "1.e3", ".e3", "1,5", "um", "uma", "1e-400", "١e٢", "٣٫٤")
+           "1.5e3", "1.e3", ".e3", "1,5", "um", "uma", "1e-400", "١e٢", "٣٫٤",
+           "\x0b1", "1\x0c", "\r1\r", "\t1\n", "\x0b\x0c1.5\r\n", "\x1c1", "1\x1f", "1\x85",
+           "\u20281", "\xa01", "1\u3000", "\x0b", "\r\n")
 
 
 def text_calls():
@@ -518,6 +538,74 @@ def byte_calls():
                    text.strip_punct(s), [call(bifonia.guess_sense, words, i) for i in range(len(words))]]
 
 
+# word lists and cue sets as hex: a set member with ill-formed UTF-8 compares as
+# the string Python decodes it to
+BYTE_SETS = ((["c3", "78", "c3"], ["c3"]), (["efbfbd", "78", "c3a1"], ["c3", "e1"]),
+             (["ff", "78", "fe"], ["efbfbd"]), (["e282", "78"], ["e282ac", "e2"]),
+             (["4f", "c3c3", "78"], ["c3c3", "efbfbdefbfbd"]), (["f09080", "78", "f0908041"], ["f09080", "f0"]),
+             (["c3a1", "78"], ["61cc81"]), (["2ec3", "78", "c32e"], ["c3"]))
+
+
+def byte_set_calls():
+    for words_hex, cues_hex in BYTE_SETS:
+        words = [bytes.fromhex(h).decode("utf-8", "replace") for h in words_hex]
+        cue_set = frozenset(bytes.fromhex(h).decode("utf-8", "replace") for h in cues_hex)
+        for idx in range(len(words)):
+            yield ["bytes_sets", words_hex, cues_hex, idx, text.cue_score(words, idx, cue_set, 4),
+                   result(features.extract_features(words, idx, {"v": cue_set}))]
+
+
+CUE_TEXTS = ("a\nb", "\t", "\x7f", "\x85", "\x00", "\x1b", "'", '"', "'\"", "\\", "é", "\u2028", "\u00ad",
+             "\u200b", "\U000e0001", "\u0378", "\ue000", "\u3000", "\xa0", " ", "\U0001F600", "\uffff",
+             "\U0010ffff", "x\ry", "ǅ", "", "\u0300", "\U00016FF0")
+
+
+def cue_repr_calls():
+    for i, t in enumerate(CUE_TEXTS):
+        other = CUE_TEXTS[(i * 5 + 3) % len(CUE_TEXTS)]
+        for prev in (None, t, other):
+            cue = cues.Cue(t, other, prev)
+            yield ["cue_repr_custom", t, other, prev, repr(cue),
+                   repr(cues.CueRule(other, (cue,))), repr(cues.CueRule(t, ())),
+                   repr(cues.CueRule(t, (cue, cues.Cue(other, t))))]
+
+
+FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "tests" / "fixtures"
+FIXTURE_SENTENCES = ((["o", "para"], 1), (["o", "autocarro", "para", "aqui"], 2),
+                     (["a", "sede", "de", "água"], 1), (["o", "molho", "de", "chaves"], 1),
+                     (["a", "bola", "de", "futebol"], 1), (["para"], 0), ([], 0))
+
+
+def fixture_calls():
+    """Model files that test the JSON reader and the model arithmetic at its edges."""
+    default_model = bifonia._sense_model
+    for path in sorted((FIXTURES / "models").glob("*.json")):
+        name = path.name
+        loaded = call(model.SenseModel.load, str(path))
+        if isinstance(loaded, dict):
+            yield ["fixture_model", name, loaded]
+            continue
+        m = loaded
+        yield ["fixture_model", name, [m.model_type, m.lang, list(m.words)]]
+        for word in m.words:
+            runs = []
+            for words, idx in FIXTURE_SENTENCES:
+                for fn in ("scores", "predict", "margin"):
+                    runs.append([fn, words, idx, probe(getattr(m, fn), word, words, idx)])
+            yield ["fixture_word", name, word, m.route(word), repr(m.margin_tau(word)), runs]
+        bifonia._sense_model = lambda: m
+        for words, idx in FIXTURE_SENTENCES:
+            yield ["fixture_guess", name, words, idx, probe(bifonia.guess_sense, words, idx)]
+        for s in ("O autocarro para aqui.", "A sede de água.", "O molho de chaves e a bola."):
+            yield ["fixture_diacritics", name, s, probe(bifonia.add_extra_diacritics, s)]
+        bifonia._sense_model = default_model
+    root = vocab._LOCALE_ROOT
+    vocab._LOCALE_ROOT = FIXTURES / "data" / "locale"
+    for name in ("badutf", "lines"):
+        yield ["fixture_voc", name, probe(vocab.voc, name, "pt-pt")]
+    vocab._LOCALE_ROOT = root
+
+
 # ── output ────────────────────────────────────────────────────────────────────
 
 def write(path, lines, header):
@@ -551,11 +639,12 @@ def main():
     corpora["frames"] = list(frame_sentences())
     corpora["voc_cues"] = list(voc_sentences())
     corpora["fuzz"] = list(fuzz_sentences(args.fuzz, seed=20261102))
+    corpora["extras"] = list(extra_sentences())
 
     # Detail level per corpus: 2 keeps every field, 1 replaces the feature
     # list by its CRC-32, 0 replaces the whole homograph list by its CRC-32.
     # The C++ test computes the same CRC over the same bytes.
-    levels = {"test_sentences": 2, "frames": 1}
+    levels = {"test_sentences": 2, "frames": 1, "extras": 2}
     seen, inputs, detail = set(), [], {}
     for name, sentences in corpora.items():
         before = len(inputs)
@@ -578,7 +667,8 @@ def main():
     calls = []
     for name, gen in (("tables", table_calls), ("infopedia", infopedia_calls),
                       ("text", text_calls), ("index", index_calls), ("probes", probe_calls),
-                      ("bytes", byte_calls)):
+                      ("bytes", byte_calls), ("byte_sets", byte_set_calls),
+                      ("cue_repr", cue_repr_calls), ("fixtures", fixture_calls)):
         before = len(calls)
         calls.extend(dumps(c) for c in gen())
         print(f"calls/{name}: {len(calls) - before}", file=sys.stderr)

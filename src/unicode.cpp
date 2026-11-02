@@ -267,6 +267,7 @@ bool is_word(char32_t c) { return in_ranges(kWord, c); }
 bool is_upper(char32_t c) { return in_ranges(kIsUpper, c); }
 bool is_digit(char32_t c) { return in_ranges(kIsDigit, c); }
 bool is_mn(char32_t c) { return in_ranges(kMn, c); }
+bool is_printable(char32_t c) { return in_ranges(kPrintable, c); }
 
 U32 nfd(const U32& text) {
     U32 out;
@@ -419,6 +420,7 @@ bool read_file(const std::string& path, std::string& out) {
     std::ostringstream buffer;
     buffer << in.rdbuf();
     out = buffer.str();
+    if (!valid_utf8(out)) throw UnicodeDecodeError("'utf-8' codec can't decode " + path);
     return true;
 }
 
@@ -523,6 +525,20 @@ std::vector<std::vector<std::pair<std::string, std::string>>> read_csv(const std
     return rows;
 }
 
-bool contains(const WordSet& set, const std::string& word) { return set.count(word) != 0; }
+// A Python str holds no ill-formed UTF-8: the bytes stand for the string they
+// decode to, with U+FFFD for each maximal subpart. Only a key that decodes to
+// a U+FFFD can equal an ill-formed member, so only such a key needs the scan.
+bool contains(const WordSet& set, const std::string& word) {
+    if (set.count(word) != 0) return true;
+    if (std::all_of(word.begin(), word.end(), [](unsigned char c) { return c < 0x80; })) return false;
+    const std::string key = to_utf8(from_utf8(word));
+    if (key.find("\xEF\xBF\xBD") == std::string::npos) return false;
+    for (const auto& member : set) {
+        if (to_utf8(from_utf8(member)) == key) return true;
+    }
+    return false;
+}
+
+bool valid_utf8(const std::string& text) { return to_utf8(from_utf8(text)) == text; }
 
 }  // namespace bifonia::detail

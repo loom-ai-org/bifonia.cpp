@@ -1,5 +1,6 @@
 // bifonia/text.py and bifonia/cues.py: token normalisation, accent folding,
 // cue scoring and the declarative sense-cue registry.
+#include <cstdio>
 #include <cstdlib>
 #include <map>
 #include <mutex>
@@ -103,14 +104,32 @@ const Dict<std::pair<std::string, std::string>>& FEATURE_CUES() {
 }
 
 namespace {
-// Python's repr() of an ASCII str: single quotes unless the text holds a single
-// quote and no double quote.
+// Python's repr() of a str: single quotes unless the text holds a single quote
+// and no double quote; control and non-printable code points as escapes.
 std::string str_repr(const std::string& s) {
     const char q = (s.find('\'') != std::string::npos && s.find('"') == std::string::npos) ? '"' : '\'';
     std::string out(1, q);
-    for (char c : s) {
-        if (c == '\\' || c == q) out.push_back('\\');
-        out.push_back(c);
+    char buf[16];
+    for (char32_t c : detail::from_utf8(s)) {
+        if (c == '\\' || c == static_cast<char32_t>(q)) {
+            out += '\\';
+            out += static_cast<char>(c);
+        } else if (c == '\t') {
+            out += "\\t";
+        } else if (c == '\n') {
+            out += "\\n";
+        } else if (c == '\r') {
+            out += "\\r";
+        } else if (c < 0x20 || c == 0x7F) {
+            std::snprintf(buf, sizeof buf, "\\x%02x", static_cast<unsigned>(c));
+            out += buf;
+        } else if (c < 0x7F || detail::is_printable(c)) {
+            out += detail::to_utf8(std::u32string(1, c));
+        } else {
+            const char* format = c <= 0xFF ? "\\x%02x" : c <= 0xFFFF ? "\\u%04x" : "\\U%08x";
+            std::snprintf(buf, sizeof buf, format, static_cast<unsigned>(c));
+            out += buf;
+        }
     }
     return out + q;
 }

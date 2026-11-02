@@ -26,6 +26,7 @@ bool is_word(char32_t c);    // re's \w: str.isalnum() or '_'
 bool is_upper(char32_t c);   // str.isupper() on one code point
 bool is_digit(char32_t c);   // str.isdigit() on one code point
 bool is_mn(char32_t c);      // unicodedata.category(c) == "Mn"
+bool is_printable(char32_t c);  // str.isprintable() on one code point
 U32 nfd(const U32& text);    // unicodedata.normalize("NFD", text)
 
 // True when Python's float(text) succeeds.
@@ -51,6 +52,8 @@ const std::string& at(const Words& words, long idx);
 
 // Files under the data directory.
 std::string data_path(const std::string& relative);
+// Read a data file; false when it cannot be opened. Throws UnicodeDecodeError
+// when it is not UTF-8, as Python's open(path, encoding="utf-8") does.
 bool read_file(const std::string& path, std::string& out);
 
 // Python's csv.DictReader over a file opened in text mode: universal newlines,
@@ -58,7 +61,9 @@ bool read_file(const std::string& path, std::string& out);
 // header; missing values are empty and extra values are dropped.
 std::vector<std::vector<std::pair<std::string, std::string>>> read_csv(const std::string& text);
 
+// Python's `word in set`, with ill-formed UTF-8 read as Python decodes it.
 bool contains(const WordSet& set, const std::string& word);
+bool valid_utf8(const std::string& text);
 
 // The terms of a .voc file: stripped, lowercased, blank and '#' lines skipped.
 WordSet parse_voc(const std::string& text);

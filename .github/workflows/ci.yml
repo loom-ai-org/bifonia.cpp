@@ -12,6 +12,8 @@ jobs:
       fail-fast: false
       matrix:
         compiler: [gcc, clang]
+        # x86-64-v3 has FMA: the cell fails if a multiply-add is fused.
+        march: [baseline, x86-64-v3]
     steps:
       - uses: actions/checkout@v4
       - name: Install zlib
@@ -19,7 +21,9 @@ jobs:
       - name: Configure
         run: |
           if [ "${{ matrix.compiler }}" = clang ]; then export CXX=clang++; else export CXX=g++; fi
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PWD/prefix"
+          if [ "${{ matrix.march }}" != baseline ]; then flags="-march=${{ matrix.march }}"; fi
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PWD/prefix" \
+            -DCMAKE_CXX_FLAGS="${flags:-}"
       - name: Build
         run: cmake --build build -j
       - name: Test

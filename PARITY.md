@@ -77,10 +77,37 @@ sentence line also records both models' scores, prediction and margin for each
 homograph.
 
 The model files are read by a small JSON reader made for their schema, so the
-library has no JSON dependency. Numbers are read as doubles with
-`std::from_chars`, which rounds as Python's `float()` does. The shipped models
-hold only floats. A model file with an integer weight gives a `scores` value
-that Python prints as an `int`.
+library has no JSON dependency. It accepts and rejects the same text as Python's
+`json` module: the strict number grammar, `NaN`, `Infinity` and `-Infinity`, and
+no raw control characters in a string. Numbers are read as doubles with
+`std::from_chars`, which rounds as Python's `float()` does. A number past the
+double range reads as an infinity, and a number below it reads as a zero, with
+the sign kept.
+
+A score is a sum of products. Python rounds each product and each sum. A fused
+multiply-add rounds once, and the last bit of a score then differs. The library
+target therefore compiles with `-ffp-contract=off` on GCC and Clang. A CI cell
+builds for `x86-64-v3`, which has FMA. Without the flag, that build gives 81
+mismatches.
+
+`margin` sorts the scores as CPython 3.12 sorts a list with `reverse=True`. The
+order differs from a plain sort only when a score is NaN.
+
+## Known divergences on malformed input
+
+Each case below needs a model or data file that the package does not ship, or
+text that is not UTF-8. The shipped files reach none of them.
+
+| Input | Python | C++ |
+| --- | --- | --- |
+| A model value of the wrong JSON type, such as `"route": null`, `"route": 1` or `"margin_tau": "0"` | Loads the file. `route` returns the value, and a string `margin_tau` raises `TypeError` when the model decides | Raises `JSONDecodeError` at load |
+| A model file that is not an object, or a `config` that is not an object | Raises `AttributeError` at load | Raises `JSONDecodeError` at load |
+| `config.lang` that is not a string | Raises `AttributeError` when the model scores | Uses `pt-pt` |
+| A word entry without `senses`, `bias` or `weights` | Raises `KeyError` when the model scores | Uses an empty list or map |
+| An integer in a model file | Keeps an `int`, which prints without `.0` and has no size limit | Reads a double |
+| A `\u` escape of a lone surrogate | Keeps the surrogate | Reads U+FFFD |
+| A NaN score in a word with 64 senses or more | Merges sorted runs | Sorts by insertion only |
+| `Cue` or `CueRule` equality on ill-formed UTF-8 | Compares the decoded strings | Compares the bytes |
 
 ## Unicode and strings
 
@@ -89,11 +116,16 @@ Strings are UTF-8. An ill-formed byte sequence reads as Python's
 subpart. The tables in `src/unicode_tables.inc` come from Python itself
 (`tools/gen_unicode_tables.py`) and record the Python and Unicode versions. They
 give `str.lower` (with the Greek final sigma), `str.upper`, `str.isspace`, the
-`\w` class of `re`, `str.isupper` and `str.isdigit` on one code point, the
+`\w` class of `re`, `str.isupper`, `str.isdigit` and `str.isprintable` on one code point, the
 decimal digits that `float()` accepts, the NFD decompositions with the
 canonical combining classes, and category Mn. Each regular expression is
 written out as code. `float()` is ported as a grammar check, underscores and
 non-ASCII decimal digits included.
+
+A set lookup compares a string with ill-formed bytes as the string Python
+decodes it to. A data file that is not UTF-8 raises `UnicodeDecodeError`, as
+Python's `open(path, encoding="utf-8")` does. `cues::repr` escapes control and
+non-printable code points as Python's `repr` does.
 
 ## Goldens
 
@@ -113,10 +145,11 @@ output of `add_extra_diacritics`. For each homograph token it also holds:
 | frames | 38,430 | every homograph, capitalised, upper-case and each diacritized form, in 42 sentence frames, CRC-32 of the features |
 | voc_cues | 65,115 | every term of every `.voc` file in 16 frames around the homographs that read it, CRC-32 of the homograph fields |
 | fuzz | 19,296 | seeded random sentences of homographs, cue terms, punctuation, case changes and Unicode, CRC-32 of the homograph fields |
-| forced | 63,065 | the test sentences and frames, and every seventh other sentence, with the model branch forced |
+| extras | 372 | the locative contractions before `sede`, left neighbours of 3 code points and more bytes, and the `İ` token shift of `proper_flags`, every field |
+| forced | 63,437 | the test sentences, frames and extras, and every seventh other sentence, with the model branch forced |
 
 A CRC-32 field is the checksum of the same JSON text. The C++ test computes the
-same checksum. The file `calls.jsonl.gz` holds 60,075 direct calls:
+same checksum. The file `calls.jsonl.gz` holds 60,303 direct calls:
 
 - every data table, word list, cue table and model entry
 - the infopedia rows and every `ipa` lookup
@@ -126,7 +159,13 @@ same checksum. The file `calls.jsonl.gz` holds 60,075 direct calls:
   index from below `-len` to above `len`
 - each public function on hand-built arguments, with each error recorded by its
   Python class
-- 3,598 ill-formed UTF-8 byte strings in four contexts.
+- 3,598 ill-formed UTF-8 byte strings in four contexts, and word lists and cue
+  sets with ill-formed members
+- `cues::repr` on control, format, private-use and unassigned code points
+- the model files in `tests/fixtures/models`: numbers past the double range,
+  ties, NaN scores, escapes, and text that Python's `json` rejects
+- the `.voc` files in `tests/fixtures/data`: line breaks, comments and ill-formed
+  UTF-8.
 
 To regenerate, install the reference release in a fresh virtual environment, then
 run:

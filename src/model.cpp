@@ -41,9 +41,16 @@ public:
     std::string string() {
         expect('"');
         std::string out;
+        // The quote, the backslash and the control characters that strict mode rejects.
+        static const std::string stops = [] {
+            std::string chars = "\"\\";
+            for (char c = 0; c < 0x20; ++c) chars.push_back(c);
+            return chars;
+        }();
         while (true) {
-            const size_t stop = s_.find_first_of("\"\\", p_);
+            const size_t stop = s_.find_first_of(stops, p_);
             if (stop == std::string::npos) throw JsonError("unterminated string");
+            if (static_cast<unsigned char>(s_[stop]) < 0x20) throw JsonError("invalid control character");
             out.append(s_, p_, stop - p_);
             p_ = stop + 1;
             if (s_[stop] == '"') return out;
@@ -94,11 +101,32 @@ public:
                                      : std::numeric_limits<double>::infinity();
             }
         }
-        while (p_ < s_.size() && std::string_view("+-0123456789.eE").find(s_[p_]) != std::string_view::npos) ++p_;
+        // The JSON grammar: -?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][-+]?[0-9]+)?
+        auto digits = [&] {
+            const size_t first = p_;
+            while (p_ < s_.size() && s_[p_] >= '0' && s_[p_] <= '9') ++p_;
+            if (p_ == first) throw JsonError("bad number");
+        };
+        if (p_ < s_.size() && s_[p_] == '-') ++p_;
+        if (p_ < s_.size() && s_[p_] == '0') {
+            ++p_;
+        } else {
+            digits();
+        }
+        if (p_ < s_.size() && s_[p_] == '.') {
+            ++p_;
+            digits();
+        }
+        if (p_ < s_.size() && (s_[p_] == 'e' || s_[p_] == 'E')) {
+            ++p_;
+            if (p_ < s_.size() && (s_[p_] == '+' || s_[p_] == '-')) ++p_;
+            digits();
+        }
+        const std::string_view text(s_.data() + start, p_ - start);
         double value = 0;
-        const auto res = std::from_chars(s_.data() + start, s_.data() + p_, value);
-        if (res.ec == std::errc::invalid_argument || res.ptr != s_.data() + p_) throw JsonError("bad number");
-        if (raw) *raw = s_.substr(start, p_ - start);
+        const auto res = std::from_chars(text.data(), text.data() + text.size(), value);
+        if (res.ec == std::errc::result_out_of_range) value = out_of_range(text);
+        if (raw) *raw = std::string(text);
         return value;
     }
 
@@ -179,6 +207,35 @@ public:
     }
 
 private:
+    // Python's float() rounds a number past the double range to inf and one
+    // below it to 0.0, keeping the sign; std::from_chars only reports it.
+    static double out_of_range(std::string_view text) {
+        const bool negative = text[0] == '-';
+        const size_t e = text.find_first_of("eE");
+        const std::string_view mantissa = text.substr(negative, e - negative);
+        long long exponent = 0;
+        if (e != std::string_view::npos) {
+            size_t i = e + 1;
+            const bool exp_negative = text[i] == '-';
+            if (text[i] == '+' || text[i] == '-') ++i;
+            for (; i < text.size(); ++i) exponent = std::min(exponent * 10 + (text[i] - '0'), 1000000000LL);
+            if (exp_negative) exponent = -exponent;
+        }
+        // The decimal exponent of the leading nonzero digit, plus one.
+        const size_t dot = mantissa.find('.');
+        const std::string_view whole = mantissa.substr(0, dot);
+        const size_t lead = whole.find_first_not_of('0');
+        long long magnitude;
+        if (lead != std::string_view::npos) {
+            magnitude = static_cast<long long>(whole.size() - lead);
+        } else {
+            const std::string_view fraction = dot == std::string_view::npos ? "" : mantissa.substr(dot + 1);
+            magnitude = -static_cast<long long>(fraction.find_first_not_of('0'));
+        }
+        const double value = magnitude + exponent > 0 ? std::numeric_limits<double>::infinity() : 0.0;
+        return negative ? -value : value;
+    }
+
     char32_t hex4() {
         if (p_ + 4 > s_.size()) throw JsonError("bad \\u escape");
         unsigned value = 0;
@@ -259,6 +316,41 @@ std::shared_ptr<SenseModel> parse_model(const std::string& text) {
     if (!r.at_end()) throw JsonError("extra data after JSON");
     return m;
 }
+
+// sorted(values, reverse=True) as CPython 3.12 does it: reverse, take the
+// first run (a strictly descending run is reversed), binary-insert the rest
+// with `<`, reverse again. The order matters only when a value is NaN. CPython
+// merges runs for 64 values or more; a word has far fewer senses.
+void py_sort_reverse(std::vector<double>& v) {
+    std::reverse(v.begin(), v.end());
+    const size_t n = v.size();
+    size_t start = 1;
+    if (n > 1) {
+        start = 2;
+        if (v[1] < v[0]) {
+            while (start < n && v[start] < v[start - 1]) ++start;
+            std::reverse(v.begin(), v.begin() + static_cast<long>(start));
+        } else {
+            while (start < n && !(v[start] < v[start - 1])) ++start;
+        }
+    }
+    for (; start < n; ++start) {
+        const double pivot = v[start];
+        size_t l = 0, r = start;
+        while (l < r) {
+            const size_t p = l + ((r - l) >> 1);
+            if (pivot < v[p]) {
+                r = p;
+            } else {
+                l = p + 1;
+            }
+        }
+        std::move_backward(v.begin() + static_cast<long>(l), v.begin() + static_cast<long>(start),
+                           v.begin() + static_cast<long>(start) + 1);
+        v[l] = pivot;
+    }
+    std::reverse(v.begin(), v.end());
+}
 }  // namespace
 
 std::string NB_PATH() { return detail::data_path("sense_model_nb.json"); }
@@ -336,7 +428,7 @@ double SenseModel::margin(const std::string& word, const Words& tokens, long idx
     const Dict<double> s = scores(word, tokens, idx, vocs);
     for (const auto& item : s.items()) values.push_back(item.second);
     if (values.size() < 2) return std::numeric_limits<double>::infinity();
-    std::sort(values.begin(), values.end(), std::greater<double>());
+    py_sort_reverse(values);
     return values[0] - values[1];
 }
 
