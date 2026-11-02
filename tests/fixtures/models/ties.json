@@ -1,0 +1,18 @@
+{"version": 1, "model_type": "fixture", "config": {"lang": "pt-pt"},
+  "words": {
+    "para": {"route": "model", "margin_tau": 0.0, "senses": ["stop", "for"], "bias": {"stop": 1.0, "for": 1.0}, "weights": {}},
+    "sede": {"route": "model", "margin_tau": 0.0, "senses": ["thirst", "seat", "head"], "bias": {"thirst": 0.5, "seat": 0.5, "head": 0.5}, "weights": {}},
+    "molho": {"route": "model", "margin_tau": 0.0, "senses": ["sauce", "bundle"], "bias": {"sauce": NaN, "bundle": 1.0}, "weights": {}},
+    "bola": {"route": "model", "margin_tau": 0.0, "senses": ["loaf", "ball"], "bias": {"loaf": 1.0, "ball": NaN}, "weights": {}},
+    "n1": {"route": "model", "margin_tau": 0.0, "senses": ["a", "b", "c"], "bias": {"a": 1.0, "b": NaN, "c": 2.0}, "weights": {}},
+    "n2": {"route": "model", "margin_tau": 0.0, "senses": ["a", "b", "c"], "bias": {"a": NaN, "b": 1.0, "c": 2.0}, "weights": {}},
+    "n3": {"route": "model", "margin_tau": 0.0, "senses": ["a", "b", "c"], "bias": {"a": 1.0, "b": 2.0, "c": NaN}, "weights": {}},
+    "n4": {"route": "model", "margin_tau": 0.0, "senses": ["a", "b", "c"], "bias": {"a": 2.0, "b": NaN, "c": 1.0}, "weights": {}},
+    "n5": {"route": "model", "margin_tau": 0.0, "senses": ["a", "b", "c"], "bias": {"a": NaN, "b": NaN, "c": 1.0}, "weights": {}},
+    "n6": {"route": "model", "margin_tau": 0.0, "senses": ["a", "b", "c", "d"], "bias": {"a": 1.0, "b": NaN, "c": NaN, "d": 2.0}, "weights": {}},
+    "n7": {"route": "model", "margin_tau": 0.0, "senses": ["a", "b", "c", "d", "e"], "bias": {"a": 3.0, "b": 1.0, "c": NaN, "d": 2.0, "e": 0.0}, "weights": {}},
+    "n8": {"route": "model", "margin_tau": 0.0, "senses": ["a", "b", "c", "d", "e", "f"], "bias": {"a": 0.0, "b": NaN, "c": 3.0, "d": -1.0, "e": NaN, "f": 2.0}, "weights": {}},
+    "n9": {"route": "model", "margin_tau": 0.0, "senses": ["a", "b", "c", "d"], "bias": {"a": Infinity, "b": NaN, "c": -Infinity, "d": Infinity}, "weights": {}},
+    "n10": {"route": "model", "margin_tau": 0.0, "senses": ["a", "b", "c", "d", "e"], "bias": {"a": 2.0, "b": 2.0, "c": NaN, "d": 2.0, "e": 1.0}, "weights": {}}
+  }
+}

@@ -1,0 +1,8 @@
+{"version": 1, "model_type": "fixture", "config": {"lang": "pt-pt"},
+  "words": {
+    "para": {"route": "model", "margin_tau": 0.0, "senses": ["stop", "for"], "bias": {"stop": -1e400, "for": 0.75}, "weights": {}},
+    "sede": {"route": "model", "margin_tau": 1e400, "senses": ["seat", "thirst"], "bias": {"seat": 0.5, "thirst": 0.25}, "weights": {"seat": {"W=o": 1e400, "L1=a": -1e400}}},
+    "molho": {"route": "model", "margin_tau": -1e400, "senses": ["sauce", "bundle"], "bias": {"sauce": -1e-400, "bundle": 1e-400}, "weights": {}},
+    "bola": {"route": "model", "margin_tau": 0.0, "senses": ["ball", "loaf"], "bias": {"ball": 2.5e-324, "loaf": -2.4e-324}, "weights": {"ball": {"pos0": 1.7976931348623159e308}}}
+  }
+}

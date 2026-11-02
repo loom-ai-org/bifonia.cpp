@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.16)
+project(bifonia_consumer LANGUAGES CXX)
+find_package(bifonia REQUIRED)
+add_executable(consumer main.cpp)
+target_link_libraries(consumer PRIVATE bifonia::bifonia)

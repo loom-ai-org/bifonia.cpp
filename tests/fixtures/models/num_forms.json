@@ -1,0 +1,7 @@
+{"version": 1, "model_type": "fixture", "config": {"lang": "pt-pt"},
+  "words": {
+    "para": {"route": "model", "margin_tau": -0e-0, "senses": ["stop", "for"], "bias": {"stop": -0.0, "for": 1E+2}, "weights": {}},
+    "sede": {"route": "model", "margin_tau": 2.5E1, "senses": ["seat", "thirst"], "bias": {"seat": 1.5e-3, "thirst": -Infinity}, "weights": {}},
+    "molho": {"route": "model", "margin_tau": 0.0, "senses": ["sauce", "bundle"], "bias": {"sauce": 0.1e1, "bundle": 123456789.123456789e-5}, "weights": {}}
+  }
+}
