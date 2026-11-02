@@ -576,8 +576,27 @@ FIXTURE_SENTENCES = ((["o", "para"], 1), (["o", "autocarro", "para", "aqui"], 2)
                      (["a", "bola", "de", "futebol"], 1), (["para"], 0), ([], 0))
 
 
+def no_surrogates(value):
+    """A lone surrogate, which the port reads as U+FFFD (a documented divergence)."""
+    if isinstance(value, str):
+        return "".join("\ufffd" if 0xD800 <= ord(c) < 0xE000 else c for c in value)
+    if isinstance(value, list):
+        return [no_surrogates(v) for v in value]
+    if isinstance(value, dict):
+        return {no_surrogates(k): no_surrogates(v) for k, v in value.items()}
+    return value
+
+
 def fixture_calls():
-    """Model files that test the JSON reader and the model arithmetic at its edges."""
+    for record in fixture_records():
+        yield no_surrogates(record)
+
+
+def fixture_records():
+    """Model files that test the JSON reader and the model arithmetic at its edges.
+
+    Scores and margins are compared as floats: Python keeps an integer score as
+    an int, which prints without ".0" (a documented divergence)."""
     default_model = bifonia._sense_model
     for path in sorted((FIXTURES / "models").glob("*.json")):
         name = path.name
@@ -586,12 +605,18 @@ def fixture_calls():
             yield ["fixture_model", name, loaded]
             continue
         m = loaded
-        yield ["fixture_model", name, [m.model_type, m.lang, list(m.words)]]
+        yield ["fixture_model", name, [m.model_type, m.lang, list(m.words), repr(m.version),
+                                       [[k, json.dumps(v)] for k, v in m.config.items()]]]
+        as_float = {
+            "scores": lambda *a: {k: float(v) for k, v in m.scores(*a).items()},
+            "predict": m.predict,
+            "margin": lambda *a: float(m.margin(*a)),
+        }
         for word in m.words:
             runs = []
             for words, idx in FIXTURE_SENTENCES:
                 for fn in ("scores", "predict", "margin"):
-                    runs.append([fn, words, idx, probe(getattr(m, fn), word, words, idx)])
+                    runs.append([fn, words, idx, probe(as_float[fn], word, words, idx)])
             yield ["fixture_word", name, word, m.route(word), repr(m.margin_tau(word)), runs]
         bifonia._sense_model = lambda: m
         for words, idx in FIXTURE_SENTENCES:

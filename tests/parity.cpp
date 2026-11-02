@@ -3,6 +3,7 @@
 // and compares the bytes.
 #include <algorithm>
 #include <charconv>
+#include <cstdlib>
 #include <cmath>
 #include <functional>
 #include <iostream>
@@ -369,6 +370,20 @@ std::string from_hex(const std::string& hex) {
 
 std::string fixtures_dir;
 
+// Python's repr() of the value a JSON text holds: an integer, a float, or a
+// plain ASCII string (the fixtures hold no other kinds).
+std::string json_repr(const std::string& raw) {
+    if (raw[0] == '"') return "'" + json_line::parse(raw).str + "'";
+    if (raw == "NaN") return "nan";
+    if (raw == "Infinity") return "inf";
+    if (raw == "-Infinity") return "-inf";
+    if (raw.find_first_of(".eE") == std::string::npos) {
+        const bool zero = raw.find_first_not_of("-0") == std::string::npos;
+        return zero ? "0" : raw;
+    }
+    return repr(std::strtod(raw.c_str(), nullptr));
+}
+
 std::string fixture_runs(const bf::model::SenseModel& m, const std::string& word, const Value& runs) {
     std::vector<std::string> out;
     for (const auto& run : runs.items) {
@@ -400,7 +415,9 @@ std::string fixture_record(const std::string& fn, const Value& v) {
                    const auto m = bf::model::SenseModel::load(path);
                    std::vector<std::string> words;
                    for (const auto& item : m->words.items()) words.push_back(item.first);
-                   return list({J(m->model_type), J(m->lang), J(words)});
+                   std::vector<std::string> config;
+                   for (const auto& [k, raw] : m->config.items()) config.push_back(J(std::vector<std::string>{k, raw}));
+                   return list({J(m->model_type), J(m->lang), J(words), J(json_repr(m->version)), list(config)});
                }) + "]";
     }
     const auto m = bf::model::SenseModel::load(path);
@@ -515,7 +532,7 @@ std::string call_record(const Value& v) {
     }
     if (fn == "model") {
         const auto m = model_named(v[1].str);
-        return head + J(v[1].str) + "," + J(m->version) + "," + J(m->model_type) + "," + J(m->lang) + "," +
+        return head + J(v[1].str) + "," + m->version + "," + J(m->model_type) + "," + J(m->lang) + "," +
                items(m->config, [](const std::string& raw) { return raw; }) + "]";
     }
     if (fn == "model_word") {

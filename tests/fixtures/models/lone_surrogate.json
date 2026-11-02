@@ -1,0 +1,5 @@
+{"version": 1, "model_type": "fixture", "config": {"lang": "pt-pt"},
+  "words": {
+    "para": {"route": "model", "margin_tau": 0.0, "senses": ["\udc00", "\ud800x", "\udfff\ud800", "ok"], "bias": {"\udc00": 1.0, "\ud800x": 2.0, "\udfff\ud800": 3.0, "ok": 0.5}, "weights": {}}
+  }
+}

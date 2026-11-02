@@ -123,9 +123,16 @@ public:
             digits();
         }
         const std::string_view text(s_.data() + start, p_ - start);
+        // Python reads an integer literal with int(), which refuses more than
+        // 4300 digits and has no negative zero.
+        const bool integer = text.find_first_of(".eE") == std::string_view::npos;
+        if (integer && text.size() - (text[0] == '-') > 4300) {
+            throw ValueError("Exceeds the limit (4300 digits) for integer string conversion");
+        }
         double value = 0;
         const auto res = std::from_chars(text.data(), text.data() + text.size(), value);
         if (res.ec == std::errc::result_out_of_range) value = out_of_range(text);
+        if (integer && value == 0.0) value = 0.0;
         if (raw) *raw = std::string(text);
         return value;
     }
@@ -291,7 +298,7 @@ std::shared_ptr<SenseModel> parse_model(const std::string& text) {
     Reader r(text);
     r.object([&](const std::string& key) {
         if (key == "version") {
-            m->version = static_cast<long>(r.number());
+            m->version = r.skip();
         } else if (key == "model_type") {
             m->model_type = r.string();
         } else if (key == "config") {
@@ -299,9 +306,9 @@ std::shared_ptr<SenseModel> parse_model(const std::string& text) {
             m->lang = "pt-pt";
             r.object([&](const std::string& name) {
                 if (name == "lang" && r.peek() == '"') {
-                    const std::string lang = r.string();
-                    m->lang = lang;
-                    m->config[name] = "\"" + lang + "\"";
+                    const std::string raw = r.skip();
+                    m->lang = Reader(raw).string();
+                    m->config[name] = raw;
                 } else {
                     m->config[name] = r.skip();
                 }
@@ -401,7 +408,11 @@ Dict<double> SenseModel::scores(const std::string& word, const Words& tokens, lo
         double s = b ? *b : 0.0;
         for (const auto& [f, v] : feats.items()) {
             const double* wf = entry.weight(sense, f);
-            if (wf && *wf != 0.0) s += v * *wf;
+            if (wf && *wf != 0.0) {
+                // A named double, so that an x87 build rounds the product before the sum.
+                const double product = v * *wf;
+                s += product;
+            }
         }
         out[sense] = s;
     }
