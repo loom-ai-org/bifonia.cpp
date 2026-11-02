@@ -1,0 +1,141 @@
+# Parity with the Python package
+
+This library is held at byte parity with the Python `bifonia` release named in
+`kPythonReference` (`include/bifonia/bifonia.hpp`). The test `parity` checks that
+claim. It recomputes every line of the three files in `tests/goldens/` and
+compares the bytes.
+
+## Public surface
+
+The Python package has 11 modules: the package itself and `corpus`, `cues`,
+`data`, `features`, `infopedia`, `model`, `scoring`, `text`, `version` and
+`vocab`. Together they define 65 public names, counting each re-export once.
+The port has 61 of them. The 4 names of `corpus` are not ported, for the reason
+given below.
+
+| Python | C++ |
+| --- | --- |
+| `bifonia.tokenize` | `bifonia::tokenize` |
+| `bifonia.is_ambiguous` | `bifonia::is_ambiguous` |
+| `bifonia.disambiguate` | `bifonia::disambiguate` |
+| `bifonia.guess_sense` | `bifonia::guess_sense` (empty `std::optional` where Python returns `None`) |
+| `bifonia.guess_pos` | `bifonia::guess_pos` |
+| `bifonia.proper_flags` | `bifonia::proper_flags` |
+| `bifonia.add_extra_diacritics` | `bifonia::add_extra_diacritics` |
+| `HOMOGRAPHS`, `AMBIGUOUS_WORDS`, `POS_SENSES`, `SENSE_POS` (also in `data`) | `bifonia::HOMOGRAPHS()` and the others, and the members of `data::Tables` |
+| `data.SENSE_POSES`, `POS_AMBIGUOUS`, `VERBS_IPA`, `NOUNS_IPA`, `ADP_IPA`, `ADJ_IPA`, `DEFAULT_SENSE`, `DEFAULT_POS`, `BASE_SCORE` | members of `data::Tables`, from `data::tables()` |
+| `data.STOPPABLE_THINGS`, `DET`, `QUANT`, `PRON`, `AUX_VERBS`, `NUMERIC`, `SOBRE_GOV`, `NEVER_AFTER_PREP`, `PREP`, `BEFORE_PREP`, `AFTER_PREP` | members of `data::Tables` |
+| `scoring.score_adp`, `score_noun`, `score_verb`, `score_adj` | `scoring::score_adp` and the others |
+| `scoring.guess_pos`, `scoring.resolve_sense` | `scoring::guess_pos`, `scoring::resolve_sense` |
+| `cues.Cue`, `cues.CueRule` (`default` is `default_sense` in C++) | `cues::Cue`, `cues::CueRule` |
+| `Cue.__repr__`, `CueRule.__repr__`, `__eq__` | `cues::repr`, `operator==` |
+| `cues.SENSE_CUES`, `cues.FEATURE_CUES` | `cues::SENSE_CUES()`, `cues::FEATURE_CUES()` |
+| `text.strip_punct`, `fold`, `folded`, `cue_score` | `text::strip_punct` and the others |
+| `features.STRUCTURAL_VOCS`, `load_structural_vocs`, `extract_features` | `features::STRUCTURAL_VOCS()` and the others |
+| `model.NB_PATH`, `model.PERCEPTRON_PATH` | `model::NB_PATH()`, `model::PERCEPTRON_PATH()` |
+| `model.SenseModel.load`, `has`, `route`, `margin_tau`, `scores`, `predict`, `margin` | the members of `model::SenseModel` with the same names |
+| `SenseModel.version`, `model_type`, `config`, `lang`, `words` | the fields of the same names, with each `config` value held as its JSON text |
+| `vocab.voc`, `vocab.DEFAULT_LANG` | `vocab::voc`, `vocab::DEFAULT_LANG` |
+| `infopedia.load`, `readings`, `ipa` | `infopedia::load`, `readings`, `ipa` |
+| `version.VERSION_*`, `bifonia.__version__` | `version::VERSION_*`, `kPythonReference` |
+
+Two private Python names have a C++ counterpart because the goldens use them.
+`bifonia._DIACRITIZED` is `bifonia::DIACRITIZED()`, read-only. Assigning
+`bifonia._sense_model` is `bifonia::set_sense_model`.
+
+A Python dict maps to `bifonia::Dict`, which keeps insertion order. The order
+decides the result in several places: score ties in `guess_pos` (ADP, NOUN, VERB,
+ADJ), the fallback sense in `resolve_sense`, the summation order of the model
+scores, and the last-wins reverse maps of the diacritic table. A Python set or
+frozenset maps to `std::unordered_set`. No result depends on set order.
+
+The tie order of `guess_pos` cannot show in a result. On a tie, `guess_pos`
+returns `DEFAULT_POS[word]`, and `DEFAULT_POS` has an entry for each homograph.
+Only a homograph gets POS scores, so the first winner of a tie is never used.
+A mutant that changes this order passes all goldens for that reason.
+
+### Not ported
+
+| Python | Reason |
+| --- | --- |
+| `corpus.CORPUS`, `corpus.IPA`, `corpus.iter_records`, `corpus.stats` | They only expose the 22.7 MB training corpus `corpus.jsonl`, which no inference path reads. The corpus is not shipped. |
+| `data/meaning_inventory.csv` | No module reads it. |
+| `SenseModel(blob)` | The C++ model is built by `SenseModel::load`, or by copying one and setting its public fields. |
+| The tuple protocol of `Cue` and `CueRule` (`__len__`, `__iter__`, `__getitem__`, `_replace`, `_asdict`, `_make`, `_fields`) | They are plain structs in C++. |
+
+The package has no command-line interface, so this library ships none.
+
+## The sense models
+
+Both shipped models route every one of their 131 words to the rules
+(`route == "rules"`). The model therefore never decides in default use: the
+check in `guess_sense` loads the perceptron and falls through to the rules. The
+port still carries the whole model path. The `forced` goldens copy the
+perceptron, route each word to the model with a `margin_tau` of 0, 0.75 or 1.5,
+and install the copy, so that `guess_sense` takes the model branch. Every
+sentence line also records both models' scores, prediction and margin for each
+homograph.
+
+The model files are read by a small JSON reader made for their schema, so the
+library has no JSON dependency. Numbers are read as doubles with
+`std::from_chars`, which rounds as Python's `float()` does. The shipped models
+hold only floats. A model file with an integer weight gives a `scores` value
+that Python prints as an `int`.
+
+## Unicode and strings
+
+Strings are UTF-8. An ill-formed byte sequence reads as Python's
+`bytes.decode("utf-8", "replace")` reads it: one U+FFFD for each maximal
+subpart. The tables in `src/unicode_tables.inc` come from Python itself
+(`tools/gen_unicode_tables.py`) and record the Python and Unicode versions. They
+give `str.lower` (with the Greek final sigma), `str.upper`, `str.isspace`, the
+`\w` class of `re`, `str.isupper` and `str.isdigit` on one code point, the
+decimal digits that `float()` accepts, the NFD decompositions with the
+canonical combining classes, and category Mn. Each regular expression is
+written out as code. `float()` is ported as a grammar check, underscores and
+non-ASCII decimal digits included.
+
+## Goldens
+
+`tools/dump_goldens.py` runs against the pinned Python release. Each sentence
+line holds the tokens, the proper-noun flags, `is_ambiguous` per token, and the
+output of `add_extra_diacritics`. For each homograph token it also holds:
+
+- `guess_pos` and `guess_sense`, with and without the proper-noun bias
+- `disambiguate`, the four POS scores and `resolve_sense` for each POS
+- `guess_sense` for each tagger hint and `disambiguate` for each POS override
+- the scores, prediction and margin of both models, and the model features.
+
+| Corpus | Inputs | Detail kept |
+| --- | ---: | --- |
+| test_sentences | 3,868 | bifonia `tests/test_sentences.jsonl`, each sentence as given and lowercased, every field |
+| hf_test | 60,953 | bifonia `hf/test.jsonl`, `sentence` and `diacritized_sentence`, CRC-32 of the homograph fields |
+| frames | 38,430 | every homograph, capitalised, upper-case and each diacritized form, in 42 sentence frames, CRC-32 of the features |
+| voc_cues | 65,115 | every term of every `.voc` file in 16 frames around the homographs that read it, CRC-32 of the homograph fields |
+| fuzz | 19,296 | seeded random sentences of homographs, cue terms, punctuation, case changes and Unicode, CRC-32 of the homograph fields |
+| forced | 63,065 | the test sentences and frames, and every seventh other sentence, with the model branch forced |
+
+A CRC-32 field is the checksum of the same JSON text. The C++ test computes the
+same checksum. The file `calls.jsonl.gz` holds 60,075 direct calls:
+
+- every data table, word list, cue table and model entry
+- the infopedia rows and every `ipa` lookup
+- each code point that has a case mapping, a decomposition, a combining class, a
+  digit value or category Mn, and both ends of each `\w` range
+- `float()` probes through `score_adp`, `cue_score` at every index, and every
+  index from below `-len` to above `len`
+- each public function on hand-built arguments, with each error recorded by its
+  Python class
+- 3,598 ill-formed UTF-8 byte strings in four contexts.
+
+To regenerate, install the reference release in a fresh virtual environment, then
+run:
+
+```
+python -I tools/gen_unicode_tables.py > src/unicode_tables.inc
+python -I tools/gen_tables.py diacritized > src/diacritized.inc
+python -I tools/gen_tables.py default_pos > src/default_pos.inc
+python -I tools/dump_goldens.py --out-dir tests/goldens \
+    --test-sentences <bifonia>/tests/test_sentences.jsonl \
+    --hf-test <bifonia>/hf/test.jsonl
+```
