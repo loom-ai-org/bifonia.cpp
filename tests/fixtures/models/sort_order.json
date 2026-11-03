@@ -1,0 +1,11 @@
+{"version": 1, "model_type": "fixture", "config": {"lang": "pt-pt"},
+  "words": {
+    "le1": {"route": "model", "margin_tau": 0.0, "senses": ["a", "b", "c"], "bias": {"a": 0.0, "b": -Infinity, "c": -0.0}, "weights": {}},
+    "le2": {"route": "model", "margin_tau": 0.0, "senses": ["a", "b", "c"], "bias": {"a": -0.0, "b": -Infinity, "c": 0.0}, "weights": {}},
+    "le3": {"route": "model", "margin_tau": 0.0, "senses": ["a", "b", "c", "d"], "bias": {"a": 0.0, "b": 0.0, "c": -Infinity, "d": -0.0}, "weights": {}},
+    "mid1": {"route": "model", "margin_tau": 0.0, "senses": ["a", "b", "c", "d", "e"], "bias": {"a": 1.0, "b": 2.0, "c": NaN, "d": 1.0, "e": 2.0}, "weights": {}},
+    "mid2": {"route": "model", "margin_tau": 0.0, "senses": ["a", "b", "c", "d", "e"], "bias": {"a": 1.0, "b": 2.0, "c": NaN, "d": 2.0, "e": NaN}, "weights": {}},
+    "mid3": {"route": "model", "margin_tau": 0.0, "senses": ["a", "b", "c", "d", "e"], "bias": {"a": 1.0, "b": 2.0, "c": NaN, "d": 2.0, "e": 1.0}, "weights": {}},
+    "inf_nan": {"route": "model", "margin_tau": 0.0, "senses": ["a", "b", "c", "d"], "bias": {"a": 1e400, "b": 2.0, "c": 1.0, "d": 0.0}, "weights": {"a": {"L1=o": -1e400}}}
+  }
+}

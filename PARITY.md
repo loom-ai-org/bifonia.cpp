@@ -82,21 +82,41 @@ library has no JSON dependency. It accepts and rejects the same text as Python's
 no raw control characters in a string. Numbers are read as doubles with
 `std::from_chars`, which rounds as Python's `float()` does. A number past the
 double range reads as an infinity, and a number below it reads as a zero, with
-the sign kept.
+the sign kept. An integer of more than 4300 digits raises `ValueError`, as
+Python's `int()` does, and the integer `-0` reads as 0. `SenseModel::version`
+and each `config` value keep their JSON text, because Python keeps any JSON
+value there.
 
 A score is a sum of products. Python rounds each product and each sum. A fused
 multiply-add rounds once, and the last bit of a score then differs. The library
 target therefore compiles with `-ffp-contract=off` on GCC and Clang. A CI cell
 builds for `x86-64-v3`, which has FMA. Without the flag, that build gives 81
-mismatches.
+mismatches. Each product goes into a named double before the sum, so that an x87
+build rounds it to double as well. A gcc `-m32` build passes the goldens.
 
 `margin` sorts the scores as CPython 3.12 sorts a list with `reverse=True`. The
-order differs from a plain sort only when a score is NaN.
+order differs from a plain sort only when a score is NaN. A score can be NaN
+without a NaN literal: `1e400` plus `-1e400` gives NaN. CPython 3.13 changed how
+`list.sort` finds runs, so Python 3.13 and later order NaN scores in another
+way. The port follows Python 3.12, the reference version.
+
+## Known divergences on valid model files
+
+Each case below needs a model file that the package does not ship. The file is
+valid JSON, and Python's `json` module loads it.
+
+| Input | Python | C++ |
+| --- | --- | --- |
+| An integer above 2^53 in magnitude | Keeps the exact `int`. Biases 9007199254740992 and 9007199254740993 predict the second sense. Biases 100000000000000001 and 100000000000000000 give a margin of 1 | Reads the nearest double. The same biases predict the first sense and give a margin of 0.0 |
+| An integer past the double range | Raises `OverflowError` when a score or a margin mixes it with a float | Reads ±inf |
+| A score or margin that stays an integer, from an integer bias with no matching weight | Prints without `.0` | Prints with `.0` |
+| A NaN score in a word with 64 senses or more | Merges sorted runs | Sorts by insertion only |
+| A `\u` escape of a lone surrogate | Keeps the surrogate | Reads U+FFFD |
 
 ## Known divergences on malformed input
 
 Each case below needs a model or data file that the package does not ship, or
-text that is not UTF-8. The shipped files reach none of them.
+text that is not UTF-8. The model files are valid JSON but not valid models.
 
 | Input | Python | C++ |
 | --- | --- | --- |
@@ -104,9 +124,6 @@ text that is not UTF-8. The shipped files reach none of them.
 | A model file that is not an object, or a `config` that is not an object | Raises `AttributeError` at load | Raises `JSONDecodeError` at load |
 | `config.lang` that is not a string | Raises `AttributeError` when the model scores | Uses `pt-pt` |
 | A word entry without `senses`, `bias` or `weights` | Raises `KeyError` when the model scores | Uses an empty list or map |
-| An integer in a model file | Keeps an `int`, which prints without `.0` and has no size limit | Reads a double |
-| A `\u` escape of a lone surrogate | Keeps the surrogate | Reads U+FFFD |
-| A NaN score in a word with 64 senses or more | Merges sorted runs | Sorts by insertion only |
 | `Cue` or `CueRule` equality on ill-formed UTF-8 | Compares the decoded strings | Compares the bytes |
 
 ## Unicode and strings

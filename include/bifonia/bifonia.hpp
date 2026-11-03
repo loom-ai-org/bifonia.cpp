@@ -257,7 +257,7 @@ public:
     // not UTF-8 and JSONDecodeError when it is not valid JSON.
     static std::shared_ptr<const SenseModel> load(const std::optional<std::string>& path = std::nullopt);
 
-    long version = 1;
+    std::string version = "1";  // as its JSON text, as Python keeps any JSON value
     std::string model_type = "unknown";
     Dict<std::string> config;  // each value as its JSON text
     std::string lang = "pt-pt";
