@@ -35,6 +35,27 @@ jobs:
           cmake --build consumer
           ./consumer/consumer
 
+  # x87 arithmetic: a 32-bit build keeps intermediates in 80-bit registers
+  # unless the library rounds each product and sum to double. The project flags
+  # ask for GCC's fast excess precision, and the library target must override it.
+  x87:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the 32-bit toolchain and zlib
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y g++-multilib zlib1g-dev:i386
+      - name: Configure
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-m32 -fexcess-precision=fast" \
+            -DZLIB_LIBRARY=/usr/lib/i386-linux-gnu/libz.so
+      - name: Build
+        run: cmake --build build -j
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
   sanitizers:
     runs-on: ubuntu-latest
     steps:

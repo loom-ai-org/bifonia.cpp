@@ -1,5 +1,6 @@
 // bifonia/__init__.py: tokenization, the sense and POS guesses, the IPA lookup
 // and the diacritic marking of a sentence.
+#include <algorithm>
 #include <map>
 #include <mutex>
 
@@ -45,7 +46,8 @@ std::string strip_edge(const std::string& token) { return detail::strip_chars(to
 struct Diacritics {
     std::map<std::pair<std::string, std::string>, std::string> forms;  // (base, sense) → form
     std::unordered_map<std::string, std::string> to_base;
-    std::unordered_map<std::string, std::string> to_sense;
+    // One form can mark several senses ("chôco": addled and cuttlefish).
+    std::unordered_map<std::string, std::vector<std::string>> to_senses;
 };
 
 const Diacritics& diacritics() {
@@ -54,14 +56,15 @@ const Diacritics& diacritics() {
         for (const auto& e : kDiacritized) {
             out.forms[{e.base, e.sense}] = e.form;
             out.to_base[e.form] = e.base;
-            out.to_sense[e.form] = e.sense;
+            out.to_senses[e.form].push_back(e.sense);
         }
         return out;
     }();
     return d;
 }
 
-const std::string* lookup(const std::unordered_map<std::string, std::string>& map, const std::string& key) {
+template <class V>
+const V* lookup(const std::unordered_map<std::string, V>& map, const std::string& key) {
     auto it = map.find(key);
     return it == map.end() ? nullptr : &it->second;
 }
@@ -122,7 +125,7 @@ void set_sense_model(std::shared_ptr<const model::SenseModel> sense_model) {
 
 Words tokenize(const std::string& text) {
     Words out;
-    for (const auto& t : find_tokens(detail::py_lower(detail::from_utf8(text)))) out.push_back(detail::to_utf8(t));
+    for (const auto& t : find_tokens(detail::from_utf8(text))) out.push_back(detail::to_utf8(detail::py_lower(t)));
     return out;
 }
 
@@ -149,7 +152,8 @@ std::optional<std::string> guess_sense(const Words& words, long idx, const std::
     const std::string& raw = detail::at(words, idx);
     const std::string token = strip_edge(raw);
     const Diacritics& d = diacritics();
-    if (const std::string* sense = lookup(d.to_sense, token)) return *sense;
+    const std::vector<std::string>* senses = lookup(d.to_senses, token);
+    if (senses && senses->size() == 1) return (*senses)[0];
     const std::string* mapped = lookup(d.to_base, token);
     const std::string base = mapped ? *mapped : token;
     Words copy;
@@ -158,6 +162,12 @@ std::optional<std::string> guess_sense(const Words& words, long idx, const std::
         copy = words;
         set_at(copy, idx, base);
         normalised = &copy;
+    }
+    if (senses) {
+        // The diacritic narrows the choice, and the context picks among its senses.
+        const auto sense = guess_sense(*normalised, idx, pos, proper, postag);
+        const bool marked = sense && std::find(senses->begin(), senses->end(), *sense) != senses->end();
+        return marked ? *sense : (*senses)[0];
     }
     if (postag) {
         const std::string tag = *postag == "PROPN" ? "NOUN" : *postag == "AUX" ? "VERB" : *postag;
@@ -182,8 +192,11 @@ std::string guess_pos(const Words& words, long idx, bool proper) {
     const Diacritics& d = diacritics();
     const std::string* mapped = lookup(d.to_base, token);
     const std::string base = mapped ? *mapped : token;
-    if (const std::string* sense = lookup(d.to_sense, token)) {
-        return data::tables().SENSE_POS.at(base).at(*sense);
+    if (lookup(d.to_senses, token)) {
+        const Dict<std::string>& sense_pos = data::tables().SENSE_POS.at(base);
+        const auto sense = guess_sense(words, idx, std::nullopt, proper);
+        if (!sense) throw KeyError("None");
+        return sense_pos.at(*sense);
     }
     if (base != raw) {
         Words normalised = words;
@@ -209,32 +222,40 @@ std::vector<bool> proper_flags(const std::string& text) {
         if (!core.empty() && detail::is_upper(core[0]) && !boundary) flags[i] = true;
     }
     if (toks.size() > 1) {
-        U32 nxt = lstrip_dash(toks[1]);
-        size_t b = 0, e = nxt.size();
-        while (b < e && is_edge_punct(nxt[b])) ++b;
-        while (e > b && is_edge_punct(nxt[e - 1])) --e;
-        nxt = nxt.substr(b, e - b);
+        auto strip_punct = [](const U32& t) {
+            size_t b = 0, e = t.size();
+            while (b < e && is_edge_punct(t[b])) ++b;
+            while (e > b && is_edge_punct(t[e - 1])) --e;
+            return t.substr(b, e - b);
+        };
+        U32 nxt = strip_punct(lstrip_dash(toks[1]));
+        // The split turns "n.º" into "n." and "º"; read the pair as "nº".
+        if (detail::py_lower(toks[1]) == U"n." && toks.size() > 2 && strip_punct(toks[2]) == U"º") nxt = U"nº";
         const std::string lowered = detail::to_utf8(detail::py_lower(nxt));
         if ((!nxt.empty() && (detail::is_upper(nxt[0]) || detail::is_digit(nxt[0]))) || lowered == "nº" ||
-            lowered == "n.º" || lowered == "no" || lowered == "nr") {
+            lowered == "nr") {
             flags[0] = true;
         }
     }
     return flags;
 }
 
-std::string add_extra_diacritics(const std::string& sentence) {
+std::string add_extra_diacritics(const std::string& sentence, const std::optional<std::string>& lang) {
+    const Dict<std::string>& overrides = lect_overrides(lang);
     const Words words = tokenize(sentence);
     const std::vector<bool> caps = proper_flags(sentence);
     std::map<size_t, std::string> replacements;
     for (size_t i = 0; i < words.size(); ++i) {
         const std::string base = strip_edge(words[i]);
         if (!is_ambiguous(base)) continue;
-        if (i >= caps.size()) throw IndexError("list index out of range");
-        const auto sense = guess_sense(words, static_cast<long>(i), std::nullopt, caps[i]);
-        if (!sense) continue;
-        auto it = diacritics().forms.find({base, *sense});
-        if (it != diacritics().forms.end() && !it->second.empty()) replacements[i] = it->second;
+        std::string diacritized;
+        if (const std::string* form = overrides.find(base)) {
+            diacritized = *form;
+        } else if (const auto sense = guess_sense(words, static_cast<long>(i), std::nullopt, caps[i])) {
+            auto it = diacritics().forms.find({base, *sense});
+            if (it != diacritics().forms.end()) diacritized = it->second;
+        }
+        if (!diacritized.empty()) replacements[i] = diacritized;
     }
     if (replacements.empty()) return detail::to_utf8(detail::from_utf8(sentence));
 

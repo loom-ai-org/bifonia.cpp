@@ -33,6 +33,10 @@ int main() {
     check(contains(bf::add_extra_diacritics("O acordo foi assinado ontem."), "acôrdo"), "acordo → acôrdo");
     check(contains(bf::add_extra_diacritics("Eu acordo cedo todos os dias."), "acórdo"), "acordo → acórdo");
     check(bf::add_extra_diacritics("Acordo cedo.") == "Acórdo cedo.", "capital kept");
+    check(bf::add_extra_diacritics("Eu domo o leão.") == "Eu dómo o leão.", "domo → dómo");
+    check(bf::add_extra_diacritics("Eu domo o leão.", std::string("pt-BR")) == "Eu domo o leão.", "pt-BR domo unmarked");
+    check(bf::add_extra_diacritics("Ele soma os números.", std::string("pt-UY-x-mvd")) == "Ele sôma os números.",
+          "pt-UY sub-lect soma → sôma");
 
     const auto words = bf::tokenize("A sede da empresa fica em Lisboa.");
     const long idx = index_of(words, "sede");

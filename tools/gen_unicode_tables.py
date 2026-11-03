@@ -1,8 +1,8 @@
 """Generate src/unicode_tables.inc from the running Python's Unicode database.
 
 The C++ port must match Python's str.lower, str.upper, str.isspace,
-str.isalnum (the `\\w` class of `re`), str.isupper, str.isdigit, float()'s
-decimal-digit transform and unicodedata.normalize("NFD") with the category
+str.isalnum (the `\\w` class of `re`), str.isupper, str.isdigit, str.isalpha,
+the decimal digits of str.isdecimal and unicodedata.normalize("NFD") with the category
 Mn filter. The tables are taken from Python itself rather than from ICU, so the
 two agree on the same Unicode version; the version is written into the
 generated file.
@@ -74,6 +74,7 @@ def main():
                        ("kWord", lambda c: c.isalnum() or c == "_"),
                        ("kIsUpper", str.isupper),
                        ("kIsDigit", str.isdigit),
+                       ("kIsAlpha", str.isalpha),
                        ("kMn", lambda c: unicodedata.category(c) == "Mn"),
                        ("kCaseIgnorable", ignorable),
                        ("kCased", cased),

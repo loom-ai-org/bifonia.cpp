@@ -199,7 +199,15 @@ std::string sentence_record(const std::string& s, int detail) {
         }));
     }
     const std::string all = list(cands);
-    return out + (detail ? all : J(json_line::crc32_of(all))) + "]";
+    out += (detail ? all : J(json_line::crc32_of(all))) + ",";
+    // The sentence for each lect with overrides, or null where it equals the default.
+    const std::string default_text = guard([&] { return J(bf::add_extra_diacritics(s)); });
+    std::vector<std::string> lects;
+    for (const char* lang : {"pt-BR", "pt-UY"}) {
+        const std::string got = guard([&] { return J(bf::add_extra_diacritics(s, std::string(lang))); });
+        lects.push_back(got == default_text ? "null" : got);
+    }
+    return out + list(lects) + "]";
 }
 
 std::string forced_record(const std::string& s) {
@@ -558,6 +566,21 @@ std::string call_record(const Value& v) {
         const std::string word = v[2].str;
         return head + J(v[1].str) + "," + J(word) + "," + J(m->has(word)) + "," + J(m->route(word)) + "," +
                J(repr(m->margin_tau(word))) + "]";
+    }
+    auto str_items = [&](const bf::Dict<std::string>& d) { return items(d, str); };
+    if (fn == "LECT_OVERRIDES") return head + items(t.LECT_OVERRIDES, str_items) + "]";
+    if (fn == "lect_overrides") {
+        const auto tag = opt(v[1]);
+        return head + J(tag) + "," + guard([&] { return str_items(bf::lect_overrides(tag)); }) + "," +
+               guard([&] { return str_items(bf::data::lect_overrides(tag)); }) + "]";
+    }
+    if (fn == "lect_diacritics") {
+        const auto tag = opt(v[1]);
+        const std::string s = v[2].str;
+        return head + J(tag) + "," + J(s) + "," + guard([&] { return J(bf::add_extra_diacritics(s, tag)); }) + "]";
+    }
+    if (fn == "lect_alpha") {
+        return head + J(v[1].str) + "," + J(!bf::data::lect_overrides(v[1].str).empty()) + "]";
     }
     if (fn == "infopedia.load") {
         return head + items(bf::infopedia::load(), [](const std::vector<bf::infopedia::Row>& rows) {

@@ -114,39 +114,6 @@ unsigned char combining_class(char32_t c) {
 constexpr char32_t kSBase = 0xAC00, kLBase = 0x1100, kVBase = 0x1161, kTBase = 0x11A7;
 constexpr char32_t kTCount = 28, kNCount = 21 * 28, kSCount = 19 * 21 * 28;
 
-bool ascii_digit(char c) { return c >= '0' && c <= '9'; }
-
-// Python's _Py_dg_strtod grammar followed by _Py_parse_inf_or_nan: does the
-// whole of text parse as a float?
-bool parses_as_float(const std::string& s) {
-    size_t i = 0, n = s.size();
-    if (i < n && (s[i] == '+' || s[i] == '-')) ++i;
-    size_t digits = 0;
-    while (i < n && ascii_digit(s[i])) ++i, ++digits;
-    if (i < n && s[i] == '.') {
-        ++i;
-        while (i < n && ascii_digit(s[i])) ++i, ++digits;
-    }
-    if (digits > 0) {
-        if (i < n && (s[i] == 'e' || s[i] == 'E')) {
-            size_t j = i + 1;
-            if (j < n && (s[j] == '+' || s[j] == '-')) ++j;
-            size_t exp_digits = 0;
-            while (j < n && ascii_digit(s[j])) ++j, ++exp_digits;
-            if (exp_digits > 0) i = j;
-        }
-        return i == n;
-    }
-    // Not a decimal number: inf, infinity or nan, any case, with a sign.
-    size_t j = 0;
-    if (j < n && (s[j] == '+' || s[j] == '-')) ++j;
-    std::string rest;
-    for (size_t k = j; k < n; ++k) {
-        char c = s[k];
-        rest.push_back((c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c);
-    }
-    return rest == "inf" || rest == "infinity" || rest == "nan";
-}
 }  // namespace
 
 // Python's bytes.decode("utf-8", "replace"): each maximal subpart of an
@@ -266,6 +233,7 @@ bool is_space(char32_t c) { return in_ranges(kSpace, c); }
 bool is_word(char32_t c) { return in_ranges(kWord, c); }
 bool is_upper(char32_t c) { return in_ranges(kIsUpper, c); }
 bool is_digit(char32_t c) { return in_ranges(kIsDigit, c); }
+bool is_alpha(char32_t c) { return in_ranges(kIsAlpha, c); }
 bool is_mn(char32_t c) { return in_ranges(kMn, c); }
 bool is_printable(char32_t c) { return in_ranges(kPrintable, c); }
 
@@ -305,44 +273,11 @@ U32 nfd(const U32& text) {
     return out;
 }
 
-bool py_float_ok(const std::string& text) {
-    // _PyUnicode_TransformDecimalAndSpaceToASCII: whitespace becomes ' ',
-    // a decimal digit becomes its ASCII digit, and any other non-ASCII code
-    // point ends the string with '?', which never parses.
-    std::string ascii;
-    for (char32_t c : from_utf8(text)) {
-        if (c < 0x80) {
-            ascii.push_back(static_cast<char>(c));
-        } else if (is_space(c)) {
-            ascii.push_back(' ');
-        } else if (int d = decimal_value(c); d >= 0) {
-            ascii.push_back(static_cast<char>('0' + d));
-        } else {
-            return false;
-        }
-    }
-    // _Py_string_to_number_with_underscores: each '_' must sit between digits.
-    if (ascii.find('_') != std::string::npos) {
-        std::string kept;
-        char prev = '\0';
-        for (char c : ascii) {
-            if (c == '_') {
-                if (!ascii_digit(prev)) return false;
-            } else {
-                if (prev == '_' && !ascii_digit(c)) return false;
-                kept.push_back(c);
-            }
-            prev = c;
-        }
-        if (prev == '_') return false;
-        ascii = kept;
-    }
-    // float_from_string_inner: strip ASCII whitespace, then parse it all.
-    auto space = [](char c) { return c == ' ' || (c >= '\t' && c <= '\r'); };
-    size_t b = 0, e = ascii.size();
-    while (b < e && space(ascii[b])) ++b;
-    while (e > b && space(ascii[e - 1])) --e;
-    return parses_as_float(ascii.substr(b, e - b));
+bool py_isdecimal(const std::string& text) {
+    const U32 u = from_utf8(text);
+    return !u.empty() && std::all_of(u.begin(), u.end(), [](char32_t c) {
+        return (c >= '0' && c <= '9') || decimal_value(c) >= 0;
+    });
 }
 
 std::string py_strip(const std::string& text) {
