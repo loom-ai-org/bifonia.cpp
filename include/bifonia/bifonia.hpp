@@ -21,7 +21,7 @@
 
 namespace bifonia {
 
-inline constexpr const char* kPythonReference = "bifonia 0.2.0a4";
+inline constexpr const char* kPythonReference = "bifonia 0.3.7a1";
 
 using Words = std::vector<std::string>;
 using WordSet = std::unordered_set<std::string>;
@@ -89,8 +89,9 @@ private:
 };
 
 // ── data directory ───────────────────────────────────────────────────────────
-// The directory that holds heterophonic_homographs.csv, infopedia_pt.csv, the
-// two sense_model_*.json files and locale/<lang>/*.voc. In order of precedence:
+// The directory that holds heterophonic_homographs.csv, lect_overrides.csv,
+// infopedia_pt.csv, the two sense_model_*.json files and locale/<lang>/*.voc.
+// In order of precedence:
 // the value given to set_data_dir(), the environment variable
 // BIFONIA_DATA_DIR, and the directory compiled in at build time. Each file is
 // read once, on first use, and then cached; set the directory before the first
@@ -99,7 +100,7 @@ void set_data_dir(const std::string& path);
 std::string data_dir();
 
 // ── bifonia (the package's top level) ───────────────────────────────────────
-// Lowercase the text and split it with the pattern -?\w+[.,;:!?]*.
+// Split the text with the pattern -?\w+[.,;:!?]* and lowercase each token.
 Words tokenize(const std::string& text);
 // True when the word, stripped of edge punctuation and lowercased, is a
 // known homograph.
@@ -118,13 +119,18 @@ std::optional<std::string> guess_sense(const Words& words, long idx,
 std::string guess_pos(const Words& words, long idx, bool proper = false);
 // Per token of the pattern above over the original-case text: a likely proper noun.
 std::vector<bool> proper_flags(const std::string& text);
-// The sentence with the open/closed vowel diacritic on each homograph.
-std::string add_extra_diacritics(const std::string& sentence);
+// The sentence with the open/closed vowel diacritic on each homograph. lang is
+// the lect tag; an empty optional or an empty tag selects the default. A lect
+// with rows in lect_overrides.csv (pt-BR, pt-UY and their sub-lects) takes the
+// override form of a word in every sense, and an empty form leaves it unmarked.
+std::string add_extra_diacritics(const std::string& sentence, const std::optional<std::string>& lang = "pt-PT");
 // The data tables re-exported at the top level.
 const Dict<Dict<std::string>>& HOMOGRAPHS();
 const WordSet& AMBIGUOUS_WORDS();
 const Dict<Dict<std::vector<std::string>>>& POS_SENSES();
 const Dict<Dict<std::string>>& SENSE_POS();
+// Re-exported from data.
+const Dict<std::string>& lect_overrides(const std::optional<std::string>& lang);
 
 // The diacritic table (Python: the private bifonia._DIACRITIZED) in its dict
 // order: each (base, sense) pair and the diacritized form that marks it.
@@ -145,10 +151,10 @@ void set_sense_model(std::shared_ptr<const model::SenseModel> sense_model);
 // ── bifonia.version ──────────────────────────────────────────────────────────
 namespace version {
 inline constexpr int VERSION_MAJOR = 0;
-inline constexpr int VERSION_MINOR = 2;
-inline constexpr int VERSION_BUILD = 0;
-inline constexpr int VERSION_ALPHA = 4;
-inline constexpr const char* VERSION_STR = "0.2.0a4";
+inline constexpr int VERSION_MINOR = 3;
+inline constexpr int VERSION_BUILD = 7;
+inline constexpr int VERSION_ALPHA = 1;
+inline constexpr const char* VERSION_STR = "0.3.7a1";
 }  // namespace version
 
 // ── bifonia.vocab ────────────────────────────────────────────────────────────
@@ -173,9 +179,16 @@ struct Tables {
     Dict<Dict<int>> BASE_SCORE;
     WordSet STOPPABLE_THINGS, DET, QUANT, PRON, AUX_VERBS, NUMERIC, SOBRE_GOV,
         NEVER_AFTER_PREP, PREP, BEFORE_PREP, AFTER_PREP;
+    Dict<Dict<std::string>> LECT_OVERRIDES;               // lect tag → word → form
 };
 // Loaded once from the data directory.
 const Tables& tables();
+// The {word: form} overrides for a lect tag. The tag matches a lect or one of
+// its sub-lects, case-insensitively, with '_' read as '-', surrounding
+// whitespace ignored and a script subtag dropped: "pt_br", "pt-BR-x-rj" and
+// "pt-Latn-BR" all match pt-BR. No tag, an empty tag and a tag that matches no
+// lect give an empty map.
+const Dict<std::string>& lect_overrides(const std::optional<std::string>& lang);
 }  // namespace data
 
 // ── bifonia.cues ─────────────────────────────────────────────────────────────

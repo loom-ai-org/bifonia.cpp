@@ -1,4 +1,6 @@
 // bifonia/data.py: the homograph table, its POS indexes and the context word lists.
+#include <algorithm>
+
 #include "detail.hpp"
 
 namespace bifonia::data {
@@ -97,6 +99,14 @@ Tables build() {
     t.AFTER_PREP.insert(t.DET.begin(), t.DET.end());
     t.AFTER_PREP.insert(t.PRON.begin(), t.PRON.end());
     for (const auto& w : set_of("after_prep_exclude")) t.AFTER_PREP.erase(w);
+
+    const std::string lect_path = detail::data_path("lect_overrides.csv");
+    if (!detail::read_file(lect_path, text)) throw FileNotFoundError("cannot read " + lect_path);
+    for (const auto& row : detail::read_csv(text)) {
+        const std::string& lang = column(row, "lang");
+        const std::string& word = column(row, "word");
+        t.LECT_OVERRIDES[lang][word] = column(row, "form");
+    }
     return t;
 }
 }  // namespace
@@ -106,6 +116,34 @@ const Tables& tables() {
     return t;
 }
 
+const Dict<std::string>& lect_overrides(const std::optional<std::string>& lang) {
+    static const Dict<std::string> kNone;
+    if (!lang || lang->empty()) return kNone;
+    detail::U32 text = detail::from_utf8(detail::py_strip(*lang));
+    std::replace(text.begin(), text.end(), U'_', U'-');
+    text = detail::py_lower(text);
+    std::vector<detail::U32> subtags{{}};
+    for (char32_t c : text) {
+        if (c == U'-') {
+            subtags.emplace_back();
+        } else {
+            subtags.back().push_back(c);
+        }
+    }
+    // A BCP 47 script subtag, such as "latn", does not change the lect.
+    if (subtags.size() > 1 && subtags[1].size() == 4 &&
+        std::all_of(subtags[1].begin(), subtags[1].end(), detail::is_alpha)) {
+        subtags.erase(subtags.begin() + 1);
+    }
+    detail::U32 tag;
+    for (size_t i = 0; i < subtags.size(); ++i) tag += (i ? U"-" : U"") + subtags[i];
+    for (const auto& [lect, overrides] : tables().LECT_OVERRIDES.items()) {
+        const detail::U32 name = detail::py_lower(detail::from_utf8(lect));
+        if (tag == name || tag.compare(0, name.size() + 1, name + U"-") == 0) return overrides;
+    }
+    return kNone;
+}
+
 }  // namespace bifonia::data
 
 namespace bifonia {
@@ -113,4 +151,5 @@ const Dict<Dict<std::string>>& HOMOGRAPHS() { return data::tables().HOMOGRAPHS; 
 const WordSet& AMBIGUOUS_WORDS() { return data::tables().AMBIGUOUS_WORDS; }
 const Dict<Dict<std::vector<std::string>>>& POS_SENSES() { return data::tables().POS_SENSES; }
 const Dict<Dict<std::string>>& SENSE_POS() { return data::tables().SENSE_POS; }
+const Dict<std::string>& lect_overrides(const std::optional<std::string>& lang) { return data::lect_overrides(lang); }
 }  // namespace bifonia

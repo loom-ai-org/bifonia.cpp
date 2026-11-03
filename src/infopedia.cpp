@@ -37,13 +37,30 @@ std::optional<std::string> ipa(const std::string& word, const std::optional<std:
     std::vector<const Row*> rows;
     for (const Row& r : readings(word)) rows.push_back(&r);
     if (pos && !pos->empty()) {
-        std::vector<const Row*> matching;
+        // A reading tagged with pos alone wins over one whose tags include it.
+        std::vector<const Row*> exact, tagged;
         for (const Row* r : rows) {
             const std::string* p = field(*r, "pos");
             if (p == nullptr) throw KeyError("pos");
-            if (detail::starts_with(*p, *pos)) matching.push_back(r);
+            if (*p == *pos) exact.push_back(r);
         }
-        if (!matching.empty()) rows = matching;
+        for (const Row* r : rows) {
+            const std::string& tags = *field(*r, "pos");
+            for (size_t start = 0;;) {
+                const size_t bar = tags.find('|', start);
+                if (tags.compare(start, bar - start, *pos) == 0) {
+                    tagged.push_back(r);
+                    break;
+                }
+                if (bar == std::string::npos) break;
+                start = bar + 1;
+            }
+        }
+        if (!exact.empty()) {
+            rows = exact;
+        } else if (!tagged.empty()) {
+            rows = tagged;
+        }
     }
     if (rows.empty()) return std::nullopt;
     const std::string* value = field(*rows[0], "ipa");

@@ -12,6 +12,8 @@ the same as the Python package, byte for byte: see [PARITY.md](PARITY.md).
 
 bifonia::add_extra_diacritics("O autocarro para em frente ao hospital.");
 // "O autocarro pára em frente ao hospital."
+bifonia::add_extra_diacritics("Ele soma os números.", "pt-BR");
+// "Ele sôma os números." (Brazilian Portuguese closes the vowel)
 
 const auto words = bifonia::tokenize("Tinha tanta sede que bebi a garrafa toda.");
 bifonia::guess_sense(words, 2);   // "thirst"

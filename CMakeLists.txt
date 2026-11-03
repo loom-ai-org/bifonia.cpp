@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(bifonia VERSION 0.2.0 LANGUAGES CXX)
+project(bifonia VERSION 0.3.7 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -53,6 +53,14 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     # x86-64-v3). The flag is on the target, so a parent project that builds
     # bifonia from source gets it too.
     target_compile_options(bifonia PRIVATE -ffp-contract=off)
+endif()
+# On x87 (-m32), GCC in GNU mode keeps intermediates at 80 bits. The standard
+# mode rounds each assignment to double, as Python does. GCC supports it for
+# C++ from version 13.
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag(-fexcess-precision=standard BIFONIA_HAS_EXCESS_PRECISION)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND BIFONIA_HAS_EXCESS_PRECISION)
+    target_compile_options(bifonia PRIVATE -fexcess-precision=standard)
 endif()
 
 install(TARGETS bifonia EXPORT bifoniaTargets

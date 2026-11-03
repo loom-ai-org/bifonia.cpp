@@ -8,18 +8,22 @@ Files written to --out-dir:
   sentences.jsonl.gz  one line per sentence: tokens, proper flags, the
                       diacritized sentence, and for every homograph token the
                       POS and sense guesses, the four POS scores, every POS
-                      and tagger override, and both sense models' scores
+                      and tagger override, and both sense models' scores; last,
+                      the sentence diacritized for each lect that has
+                      overrides, or null where it equals the default
   forced.jsonl.gz     the same sentences with every model word routed to the
                       model, so the model branch of guess_sense decides
   calls.jsonl.gz      direct calls: tables, vocabularies, text helpers,
-                      infopedia, numeric probes, index probes, Unicode probes
+                      infopedia, numeric probes, index probes, Unicode probes,
+                      lect tags
 
 Sentence corpora:
   --test-sentences  bifonia tests/test_sentences.jsonl (each sentence as given
                     and lowercased)
   --hf-test         bifonia hf/test.jsonl (sentence and diacritized_sentence)
   generated         every homograph in sentence frames, every .voc term in
-                    context, and a seeded fuzz set
+                    context, the "molho" clause frames, and a seeded fuzz set
+  fixtures          tests/fixtures/molho_probes.tsv (the reading of "molho")
 
 Usage:
   python -I tools/dump_goldens.py --out-dir tests/goldens \\
@@ -81,6 +85,10 @@ def candidates(words):
             yield i, token
 
 
+# The lects that have rows in data/lect_overrides.csv.
+LECTS = ("pt-BR", "pt-UY")
+
+
 def sentence_record(sentence, detail):
     words = bifonia.tokenize(sentence)
     flags = bifonia.proper_flags(sentence)
@@ -108,6 +116,9 @@ def sentence_record(sentence, detail):
             feats if detail == 2 else zlib.crc32(dumps(feats).encode("utf-8")),
         ])
     out.append(cands if detail else zlib.crc32(dumps(cands).encode("utf-8")))
+    default = out[4]
+    out.append([None if (r := call(bifonia.add_extra_diacritics, sentence, lang)) == default else r
+                for lang in LECTS])
     return out
 
 
@@ -147,6 +158,11 @@ GENERAL_TARGETS = ("para", "pelo", "sobre", "sede", "molho", "tola", "forma", "c
 VOC_TARGETS = {
     "bola_ball_cues": ("bola",), "bola_loaf_cues": ("bola",), "lobo_lobe_cues": ("lobo",),
     "polo_fledgling_cues": ("polo",), "cor_memory_cues": ("cor",),
+    "molho_noun_prev": ("molho",), "adverbial_de": ("molho",), "object_pronouns": ("molho",),
+    "object_determiners": ("molho",), "a_locutions": ("molho",), "post_verb_adverbs": ("molho",),
+    "frequency_nouns": ("molho",), "time_nouns": ("molho",), "degree_nouns": ("molho",),
+    "evaluative_nouns": ("molho",), "evaluative_adjectives": ("molho",),
+    "duration_modifiers": ("molho",), "por_contractions": ("molho",),
     "mould_cues": ("forma",), "bakeware": ("forma",), "bake_purpose": ("forma",),
     "forma_shape_prev": ("forma",), "forma_shape_next": ("forma",),
     "sede_seat_cues": ("sede",), "sede_thirst_cues": ("sede",),
@@ -218,6 +234,42 @@ def extra_sentences():
         for t in ("ǅ", "Ǆ", "ǆ", "ᾈ", "ᾀ", "Σ", "É", "ß", "x", "X", "1", "ǲ", "Ǳ", "ﬁ", "Ⅻ", "ⅻ", "ǈ"):
             yield f"İ{h} {t} x"
             yield f"x İ{h} {t}"
+
+
+# The lists that decide whether "molho" opens a clause with its object.
+MOLHO_VOCS = ("molho_noun_prev", "adverbial_de", "object_pronouns", "object_determiners",
+              "a_locutions", "post_verb_adverbs", "frequency_nouns", "time_nouns", "degree_nouns",
+              "evaluative_nouns", "evaluative_adjectives", "duration_modifiers", "por_contractions",
+              "adv_bridge", "neg_adv", "deferral_adv", "intensifiers", "articles", "quantifiers",
+              "numeric", "determiners")
+
+MOLHO_FRAMES = (
+    "Molho {t}", "Molho {t} as plantas", "Molho {t}.", "Molho {t}, as plantas", "molho {t} o pão",
+    "Ontem, molho {t} as plantas", "eu molho {t}", "{t} molho", "{t} molho as plantas",
+    "o {t} molho", "Molho um {t} de pão", "Molho uma {t}!", "Molho uma bela {t}",
+    "Molho todo o {t}", "Molho uma {t} inteira as plantas", "Molho de {t} as plantas",
+    "Molho a {t} os vasos", "Molho duas {t} os vasos", "Molho {t}-o", "Molho {t} -as",
+    "o molho de {t}", "a qual molho {t}", "{t} qual molho", "pelo qual molho {t}",
+    "Molho sempre {t} as plantas", "Molho mais {t}", "Molho {t} todo-o-terreno",
+    "Qual molho, {t}?", "Molho {t} {t} as plantas", "falta {t}; molho {t} os pés",
+)
+
+
+def molho_sentences():
+    """Each term of the lists that score "molho", in the clause frames that read them."""
+    for name in MOLHO_VOCS:
+        for term in sorted(vocab.voc(name)):
+            for frame in MOLHO_FRAMES:
+                yield frame.format(t=term)
+
+
+MOLHO_PROBES = pathlib.Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "molho_probes.tsv"
+
+
+def molho_probe_sentences():
+    for line in MOLHO_PROBES.read_text(encoding="utf-8").splitlines():
+        if line and not line.startswith("#"):
+            yield line.split("\t", 1)[1]
 
 
 FUZZ_PUNCT = (".", ",", ";", ":", "!", "?", "-", " -", "...", "!?", "…", "«", "»", "'", '"',
@@ -315,7 +367,8 @@ def infopedia_calls():
         ["", "xyz", "PÁRA", "İ", "ΣΑΣ"]
     for w in words:
         yield ["infopedia.readings_len", w, len(infopedia.readings(w))]
-        for pos in (None, "", "VERB", "NOUN", "ADJ", "ADP", "V", "N", "verbo", "nome"):
+        for pos in (None, "", "VERB", "NOUN", "ADJ", "ADP", "V", "N", "verbo", "nome",
+                    "NOUN|VERB", "VERB|NOUN", "|", "NOUN|", "|NOUN"):
             yield ["infopedia.ipa", w, pos, infopedia.ipa(w, pos)]
 
 
@@ -326,7 +379,8 @@ NUMBERS = ("0", "1", "12", "-1", "+1", "1.5", ".5", "5.", "1e5", "1E5", "1e+5", 
            "0_0", "١_٢", "1 ", " 1", "1 ", "dois", "três", "mil", "três.", "-", "", ".", "-.5",
            "1.5e3", "1.e3", ".e3", "1,5", "um", "uma", "1e-400", "١e٢", "٣٫٤",
            "\x0b1", "1\x0c", "\r1\r", "\t1\n", "\x0b\x0c1.5\r\n", "\x1c1", "1\x1f", "1\x85",
-           "\u20281", "\xa01", "1\u3000", "\x0b", "\r\n")
+           "\u20281", "\xa01", "1\u3000", "\x0b", "\r\n",
+           "--1", "-١٢", "−1", "-²", "-Ⅻ", "1-", "-1-", "-0", "- 1", "-dois", "-três")
 
 
 def text_calls():
@@ -378,7 +432,9 @@ def text_calls():
 
 def index_calls():
     sentences = ("o autocarro para em frente", "eu gosto de ti", "a sede da empresa",
-                 "para", "", "sede de poder, pára!", "a forma de bolo")
+                 "para", "", "sede de poder, pára!", "a forma de bolo",
+                 "molho sempre as plantas", "falta molho, molho um pouco de pão", "qual molho",
+                 "o chôco frito", "chôco")
     for s in sentences:
         words = bifonia.tokenize(s)
         for idx in range(-len(words) - 2, len(words) + 2):
@@ -408,6 +464,7 @@ ODD_STRINGS = (
     "Choro nº 13", "Cerro Corá", "Torno-me", "o -o", "torno-o", "\u2028para", "para\u0301",
     "pa\u0301ra", "a\u00a0para", "1.5", "١٢", "Σ para Σ", "ǅemal para", "e\u0301", "Sede: SEDE",
     "eu Gosto", "O Molho de chaves", "COLHER", "Ação", "...", "a.b,c;d:e!f?g",
+    "Choro n.º 13", "Choro N.º 13", "Choro n. º", "Choro n.º", "Choro n.", "Choro no 5", "Choro N.ºx",
 )
 
 ODD_WORDS = (
@@ -415,6 +472,9 @@ ODD_WORDS = (
     ["sede", "de", "poder"], ["o", "molho", "de", "salsa"], ["xyz"], ["-", "-"], ["para", "-se"],
     ["bola", "", "golo"], ["cor", "de"], ["de", "cor"], ["a", "tola", "dele"], ["pelo", "o"],
     ["o", "corte", "de", "cabelo"], ["forma", "para", "o", "bolo"],
+    ["molho", ""], ["", "molho", "um", ""], [",", "molho"], ["molho", "-as"],
+    ["molho", "um", "pouco", "de"], ["x,", "molho", "todo", "o", "dia", "inteiro", ""],
+    ["chôco"], ["o", "chôco", "frito"], ["", "molho", "x"], ["", "molho", "de", "tomate"],
 )
 
 VOCS_ARGS = ([], [["determiners", ["o", "a"]], ["empty", []], ["x", ["para", "de", ""]]])
@@ -633,6 +693,50 @@ def fixture_records():
 
 # ── output ────────────────────────────────────────────────────────────────────
 
+# Lect tags: each lect and its sub-lects, case, "_", whitespace and script
+# subtags, and tags that only look like a lect.
+LECT_TAGS = (
+    None, "", " ", "\t", "pt-PT", "pt", "pt-BR", "pt-br", "PT-BR", "pt_BR", "pt_br", " pt-BR ",
+    "\u3000pt-BR\n", "\xa0pt-UY", "pt-BR-x-rj", "pt-BR-x-sp", "pt-br-x-rj", "pt_BR_x_rj",
+    "PT_BR_X_SP", "pT-bR-X-Rj", "pt-Latn-BR", "pt-latn-br", "PT-LATN-UY", "pt_Latn_BR-x-sp",
+    "pt-Latn-BR-x-rj", "pt-Latn", "pt-Latn-UY", "pt-Latn-", "pt-Latn-br-", "pt-latnbr",
+    "pt-Latn-Latn-BR", "pt-UY", "pt-uy", "pt_UY", "pt-UY-x-mvd", "pt-BRX", "pt-BR_", "pt-BR-",
+    "pt-UYX", "pt-BR x", "pt-BR-x", "ptBR", "br", "BR", "pt--BR", "-pt-BR", "pt-BR--",
+    "pt-1234-BR", "pt-Lat1-BR", "pt-Latnx-BR", "pt-abc-BR", "pt-Lat_BR", "pt-İatn-BR", "pt-ǅlat-BR", "pt-ﬁat-BR",
+    "pt-Ⅻabc-BR", "pt-ǲabc-BR", "pt-ÇÃÕÉ-BR", "pt‐BR", "pt-ΒR", "es-BR", "es-UY", "pt-AO",
+    "pt-MZ", "gl", "en-US", "x-pt-BR", "ptbr", "pt-PT-x-BR",
+)
+
+LECT_SENTENCES = (
+    "O abono de família chegou.", "Eu abono a dívida.", "Abono a dívida.", "O aceno dele foi breve.",
+    "Eu aceno ao vizinho.", "O domo da igreja.", "Eu domo o leão.", "O empeno da porta.",
+    "Eu empeno a madeira.", "O desempeno da roda.", "Eu desempeno a chapa.", "A soma dá dez.",
+    "Ele soma os números.", "Soma tudo.", "SOMA", "abôno", "sóma", "o abono e a soma",
+    "O autocarro para em frente ao hospital.", "Eu acordo cedo.",
+    "abono, aceno, domo, empeno, desempeno, soma", "",
+)
+
+
+def lect_calls():
+    yield ["LECT_OVERRIDES", [[lang, list(rows.items())] for lang, rows in data.LECT_OVERRIDES.items()]]
+    spaces = [chr(cp) for cp in range(0x110000) if not 0xD800 <= cp <= 0xDFFF and chr(cp).isspace()]
+    tags = list(LECT_TAGS) + [f"{c}pt-BR{c}" for c in spaces] + [f"pt-UY{c}x" for c in spaces]
+    for tag in tags:
+        yield ["lect_overrides", tag, probe(bifonia.lect_overrides, tag), probe(data.lect_overrides, tag)]
+        for s in LECT_SENTENCES:
+            yield ["lect_diacritics", tag, s, probe(bifonia.add_extra_diacritics, s, tag)]
+    # the boundaries of every str.isalpha range, as a four-letter script subtag
+    prev = False
+    for cp in range(0x110001):
+        cur = cp < 0x110000 and not (0xD800 <= cp <= 0xDFFF) and chr(cp).isalpha()
+        if cur != prev:
+            for x in (cp - 1, cp):
+                if 0 <= x < 0x110000 and not (0xD800 <= x <= 0xDFFF):
+                    tag = f"pt-{chr(x) * 4}-BR"
+                    yield ["lect_alpha", tag, bool(data.lect_overrides(tag))]
+        prev = cur
+
+
 def write(path, lines, header):
     buffer = io.StringIO()
     header = dict(header, count=len(lines))
@@ -665,11 +769,13 @@ def main():
     corpora["voc_cues"] = list(voc_sentences())
     corpora["fuzz"] = list(fuzz_sentences(args.fuzz, seed=20261102))
     corpora["extras"] = list(extra_sentences())
+    corpora["molho_probes"] = list(molho_probe_sentences())
+    corpora["molho_frames"] = list(molho_sentences())
 
     # Detail level per corpus: 2 keeps every field, 1 replaces the feature
     # list by its CRC-32, 0 replaces the whole homograph list by its CRC-32.
     # The C++ test computes the same CRC over the same bytes.
-    levels = {"test_sentences": 2, "frames": 1, "extras": 2}
+    levels = {"test_sentences": 2, "frames": 1, "extras": 2, "molho_probes": 2, "molho_frames": 1}
     seen, inputs, detail = set(), [], {}
     for name, sentences in corpora.items():
         before = len(inputs)
@@ -693,7 +799,7 @@ def main():
     for name, gen in (("tables", table_calls), ("infopedia", infopedia_calls),
                       ("text", text_calls), ("index", index_calls), ("probes", probe_calls),
                       ("bytes", byte_calls), ("byte_sets", byte_set_calls),
-                      ("cue_repr", cue_repr_calls), ("fixtures", fixture_calls)):
+                      ("cue_repr", cue_repr_calls), ("lect", lect_calls), ("fixtures", fixture_calls)):
         before = len(calls)
         calls.extend(dumps(c) for c in gen())
         print(f"calls/{name}: {len(calls) - before}", file=sys.stderr)

@@ -1,0 +1,5 @@
+{"version": 1, "model_type": "fixture", "config": {"lang": "pt-pt"},
+  "words": {
+    "para": {"route": "model", "margin_tau": -0E0, "senses": ["stop", "for"], "bias": {"stop": -0E0, "for": -0e5}, "weights": {}}
+  }
+}

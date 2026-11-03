@@ -1,0 +1,471 @@
+# Probe sentences for the reading of "molho". Column 1 is the intended reading:
+# N is the sauce noun (closed o), V is the verb molhar (open o).
+# Round-2 counterexamples. Column 1: N = sauce noun (closed ô), V = 1sg molhar (open ó).
+N	Molho picante é o meu preferido.
+N	Molho bechamel leva farinha e leite.
+N	Molho branco ou vermelho?
+N	Molho à parte, por favor.
+N	Molho pesto com massa fresca.
+N	Molho inglês dá sabor à carne.
+N	Molho verde acompanha o peixe.
+N	Molho, sal e pimenta a gosto.
+N	Molho também é comida.
+N	Molho caseiro é sempre melhor.
+N	Molho agridoce combina com frango.
+N	Com o peixe, molho verde.
+N	Qual molho, o branco?
+N	Qual molho, o de tomate?
+N	Gosto muito disto. Molho picante é o melhor.
+N	Para o jantar: molho picante.
+N	Hoje: molho verde; amanhã: molho branco.
+N	Molho para massa é fácil de fazer.
+N	Molho com natas engorda.
+N	Molho sem glúten é difícil de encontrar.
+N	Molho em pó não presta.
+N	Molho Tabasco é muito forte.
+N	Molho número cinco é o melhor.
+N	Molho e massa, por favor.
+N	Molho ou maionese?
+N	Molho demais estraga o prato.
+N	Molho nenhum me agrada.
+N	Molho muito picante faz-me mal.
+N	Molho de tarde não se come.
+N	Molho de véspera sabe sempre melhor.
+N	Molho de noite não faço.
+N	Molho bastante picante faz-me mal.
+N	Molho pouco salgado é melhor.
+N	Molho algum me convence.
+N	Molho dessa marca não compro.
+N	Molho desses é caro.
+N	Molho a mais estraga o prato.
+N	Molho à bolonhesa é o meu preferido.
+N	Molho ao lado, por favor.
+N	Molho no prato, não na mesa.
+N	Molho nas batatas é bom.
+N	Molho de tomate.
+N	Molho de soja é salgado.
+V	Molho os pés na bacia com água morna.
+V	Molho de manhã as plantas.
+V	Molho de novo os pés.
+V	Molho em água morna as sementes.
+V	Molho com cuidado as folhas.
+V	Molho para não secar.
+V	Molho e seco a loiça.
+V	Molho diariamente as plantas.
+V	Molho agora os pés.
+V	Molho hoje as plantas.
+V	Molho aqui os pés.
+V	Molho bem as plantas.
+V	Molho duas vezes as plantas.
+V	Molho tudo.
+V	Molho isto primeiro.
+V	Molho de leve as folhas.
+V	Molho de dia as plantas.
+V	Molho de joelhos o chão.
+V	Molho de graça as plantas do vizinho.
+V	Molho, rego e podo as plantas.
+V	A mangueira com a qual molho as plantas está rota.
+V	As toalhas com as quais molho a cara são novas.
+V	O regador com o qual molho a horta é velho.
+V	O balde no qual molho a esfregona está partido.
+V	Esta é a razão pela qual molho as plantas à noite.
+V	Os vasos nos quais molho a terra são grandes.
+V	Molho mais as plantas no verão.
+V	Molho pouco as plantas no inverno.
+V	Molho sozinho as plantas.
+V	Rego a horta; molho as plantas.
+V	Molho também as roseiras.
+V	Molho à pressa as plantas.
+V	Molho sempre as plantas.
+V	Molho no lavatório a roupa.
+V	Molho nas mãos a cara.
+V	Que molho as plantas?
+V	Eu molho as plantas todas as manhãs.
+V	Molho-as de manhã.
+# Round-3 fresh probes, one block per word list.
+# unlisted subject verbs, with an object determiner later
+N	Molho de soja tempera o arroz.
+N	Molho de tomate engrossa o caldo.
+N	Molho de tomate acompanha a massa.
+N	Molho de natas enriquece o prato.
+N	Molho de manteiga melhora o peixe.
+N	Molho verde complementa o peixe.
+N	Molho picante aquece o corpo.
+N	Molho de laranja valoriza o pato.
+N	Molho de vinho tinto envolve a carne.
+N	Molho branco cobre a lasanha.
+N	Molho de caril domina o sabor.
+N	Molho de iogurte refresca o caril.
+N	Molho de cogumelos acompanhou o bife.
+N	Molho de alho transforma o pão.
+N	Molho de mostarda liga os ingredientes.
+N	Molho de framboesa decora a sobremesa.
+N	Molho de tomate leva o seu tempo.
+N	Molho holandês exige paciência.
+N	Molho de queijo derrete na boca.
+N	Molho de pimenta queima a língua.
+# possessives and demonstratives inside a noun phrase
+N	Molho da minha avó é o melhor.
+N	Molho do meu pai leva vinho.
+N	Molho de tomate da minha mãe é famoso.
+N	Molho desta casa é delicioso.
+N	Molho daquele restaurante é ótimo.
+N	Molho de tomate, o clássico.
+N	Molho verde, a minha especialidade.
+N	Molho bechamel, o mais fácil de fazer.
+N	Molho de natas e o arroz, por favor.
+N	Molho picante e a cerveja chegaram.
+N	Molho branco ou o vermelho?
+N	Molho de pimenta: o segredo da avó.
+N	Molho como o da avó não há.
+N	Molho igual ao meu não há.
+# não with non-finite or finite forms
+N	Molho não faltou no jantar.
+N	Molho não, obrigado.
+N	Molho? Não, obrigado.
+V	Molho, não seco.
+V	Molho e não seco.
+V	Molho para não estragar a terra.
+V	Molho sem não regar.
+# proclitics and subordinate clauses after an elliptical verb
+V	Molho quando me apetece.
+V	Molho sempre que me lembro.
+V	Molho quando está calor.
+V	Molho sempre que faz calor.
+V	Molho porque é preciso.
+V	Molho se for preciso.
+V	Molho enquanto a sopa ferve.
+V	Molho como me ensinaram.
+V	Molho o que for preciso.
+V	Molho o que me pedirem.
+# after ; and :
+V	Primeiro rego a horta; depois, molho os vasos.
+V	Regra da casa: molho as plantas ao domingo.
+N	Ingredientes: molho, massa e queijo.
+N	Para acompanhar: molho de iogurte.
+N	Sobremesa; molho de chocolate por cima.
+V	Rotina: molho os pés, seco-os e deito-me.
+# coordinated clauses
+V	Lavo, molho e seco a roupa.
+V	Lavo a roupa, molho os lençóis e estendo tudo.
+V	Corto, molho, tempero e sirvo.
+N	Pão, queijo, molho e vinho.
+N	Batatas, molho, arroz.
+N	Comprei pão, queijo e molho.
+V	Chego a casa e molho os pés.
+# molho at the end of a clause
+N	Pus pão, queijo, molho.
+N	Faltou o molho.
+V	Se chove, não molho.
+V	Quando chove, molho.
+N	Que bom, molho!
+# qual
+N	Qual molho preferes?
+N	Não sei qual molho usar.
+N	Em qual molho mergulhaste o pão?
+N	Diz-me qual molho queres.
+V	O vaso no qual molho a terra é grande.
+V	A forma pela qual molho a roupa é estranha.
+N	Pergunta ao chefe qual molho serve.
+# recipe and menu shapes
+N	Molho de tomate caseiro.
+N	Molho de iogurte para acompanhar.
+N	Molho à espanhola.
+N	Molho à Bulhão Pato.
+N	Molho de tomate: ingredientes.
+N	Molho rápido para massa.
+N	Molho simples de manteiga.
+N	Molho de cebola com vinho do Porto.
+N	Molho com natas e cogumelos.
+N	Molho sem lactose.
+N	Molho para salada.
+N	Molho para massa fresca.
+V	Molho a roupa antes de a lavar.
+V	Molho o pincel na tinta.
+V	Molho bem a terra antes de plantar.
+V	Molho muitas vezes as plantas.
+V	Molho a cara com água fria.
+V	Molho um pano e passo na mesa.
+V	Molho uma toalha em água quente.
+V	Molho cada planta com cuidado.
+V	Molho todas as plantas de manhã.
+V	Molho estas plantas todos os dias.
+V	Molho essa toalha e dou-ta.
+# Round-4 probes against the round-4 pieces.
+# coordination exemption (e, ou, nem, como)
+V	Molho e a seguir seco.
+V	Molho e a seguir seco a roupa.
+V	Molho e depois seco a roupa.
+V	Molho e logo a seguir estendo.
+V	Molho e a toalha fica encharcada.
+N	Molho e o resto, por favor.
+N	Molho e a salada chegaram juntos.
+N	Molho ou a manteiga, tanto faz.
+V	Molho ou a planta morre.
+V	Molho nem a planta cresce.
+# como = like
+V	Molho como a minha avó fazia.
+V	Molho como o meu pai me ensinou.
+V	Molho como um jardineiro.
+N	Molho como o da avó não há.
+N	Molho como este não se encontra.
+# como = I eat
+V	Molho o pão e como-o.
+V	Molho, como e saio.
+V	Molho e como o pão.
+# que: subordinator, relative, interrogative, comparative
+N	Molho picante que arde é bom.
+N	Molho que eu fiz ontem está ótimo.
+N	Molho que sobrou do jantar.
+V	Molho que nem um doido.
+V	Molho, que remédio!
+V	Molho mais do que rego.
+V	Molho sempre que posso as plantas.
+N	Molho de soja, que é salgado, vai à parte.
+# the other subordinators
+V	Molho conforme o calor.
+V	Molho conforme a estação.
+V	Molho caso a terra esteja seca.
+V	Molho embora a terra esteja húmida.
+V	Molho quando a terra seca.
+V	Molho porque a terra está seca.
+N	Molho conforme a receita da avó é o melhor.
+# determiners after cada
+V	Molho cada vaso de manhã.
+V	Molho cada uma das plantas.
+N	Molho cada vez mais caro, é o que é.
+V	Molho cada vez que posso.
+# adverbial_de additions
+V	Molho de forma uniforme a terra.
+V	Molho de modo regular as plantas.
+V	Molho de maneira suave a roupa.
+N	Molho de forma caseira é sempre melhor.
+N	Molho de modo tradicional leva vinho.
+V	Molho de frente o canteiro.
+V	Molho de costas a parede.
+V	Molho de raspão o casaco.
+V	Molho de passagem as plantas.
+V	Molho de improviso o pão.
+V	Molho de antemão as sementes.
+N	Molho de baixo teor calórico.
+V	Molho de baixo para cima a parede.
+N	Molho de hortelã-pimenta.
+N	Molho de cima é mais grosso.
+# de + noun, now decisive for the noun
+V	Molho de água fria as plantas.
+V	Molho de suor a camisa.
+N	Molho de maracujá refresca a sobremesa.
+N	Molho de cerveja preta acompanha a carne.
+N	Molho de chocolate cobre o bolo.
+# contractions before a possessive (R3-2)
+V	Molho no meu quintal as plantas.
+V	Molho na minha casa as plantas.
+N	Molho do nosso restaurante é famoso.
+N	Molho pelo meu gosto é melhor.
+V	Molho pelas minhas mãos a terra.
+# PR 35 probes: natural noun text (recipe titles, menus, product names, reviews) and natural verbs.
+# recipe titles and steps
+N	Molho de tomate caseiro
+N	Molho bechamel fácil
+N	Molho verde para peixe grelhado
+N	Molho de iogurte e hortelã
+N	Molho à bolonhesa tradicional
+N	Molho branco com cogumelos
+N	Molho agridoce chinês
+N	Molho pesto: ingredientes
+N	Molho rápido de manteiga e alho
+N	Molho para salada de agrião
+N	Molho sem lactose para massas
+N	Molho de natas light
+N	Molho a ferver, junte o sal.
+N	Molho a engrossar, baixe o lume.
+N	Molho o suficiente para quatro pessoas.
+N	Molho todo o dia ao lume fica apurado.
+N	Molho uma noite no frigorífico fica melhor.
+# menus
+N	Molho à escolha
+N	Molho da casa
+N	Molho do dia: cogumelos
+N	Molho extra: 1 euro
+N	Molho 2 euros
+N	Molho à parte
+N	Molho incluído
+N	Molho tártaro, maionese ou ketchup
+# product names and labels
+N	Molho Tabasco original
+N	Molho inglês Lea & Perrins
+N	Molho de soja Kikkoman 150 ml
+N	Molho barbecue picante 500 g
+N	Molho tudo-em-um para massas
+N	Molho todo-o-terreno da avó
+# reviews
+N	Carne boa. Molho um pouco salgado.
+N	Molho um pouco picante.
+N	Molho um bocado salgado.
+N	Molho uma delícia!
+N	Molho uma maravilha.
+N	Molho um espetáculo.
+N	Molho sempre o mesmo, sem graça.
+N	Molho muito bom.
+N	Molho meio salgado.
+N	Molho tão bom!
+N	Molho nada de especial.
+N	Molho demasiado doce.
+N	Molho excelente, carne mal passada.
+N	Molho, o melhor de todos.
+N	Molho, a estrela do prato.
+N	Molho, uma delícia.
+N	Molho bom, batatas frias.
+N	Molho também bom.
+N	Molho também muito bom.
+N	Molho mais ou menos.
+N	Molho mais saboroso que o habitual.
+N	Molho cada vez melhor.
+N	Molho, como sempre, perfeito.
+N	Molho? Delicioso.
+# natural verbs with a clear object
+V	Molho as plantas.
+V	Molho as plantas todos os dias.
+V	Eu molho o pão no café.
+V	Molho-as.
+V	Molho-me na chuva.
+V	Não molho os pés.
+V	Molho sempre as plantas de manhã.
+V	Molho bem a terra antes de plantar.
+V	Molho o pão no leite.
+V	Molho a roupa antes de a lavar.
+V	Molho os pés na bacia.
+V	Molho tudo antes de cozinhar.
+V	Molho isto e aquilo.
+V	Molho todas as plantas.
+V	Molho cada vaso de manhã.
+V	Molho duas vezes as plantas.
+V	Molho de manhã as plantas.
+V	Também molho as roseiras.
+V	Rego a horta e molho as flores.
+V	Quando chove, não molho as plantas.
+# PR 39 probes: verbs with a clear object that the new skips may hide, nouns the lists may still miss, hyphen/enclitic cases.
+# degree skip followed by an object
+V	Molho um pouco de pão no café.
+V	Molho um bocado de pão no leite.
+V	Molho um pouco o pão no café.
+V	Molho um bocado as plantas.
+V	Molho um pouco a terra antes de semear.
+V	Molho um tanto as folhas.
+V	Molho um pouco mais a terra.
+# duration skip followed by an object or a modifier
+V	Molho uma noite inteira as sementes.
+V	Molho uma hora as sementes.
+V	Molho todo o dia as plantas.
+V	Molho todas as manhãs os vasos.
+V	Molho todo o pão.
+V	Molho toda a roupa.
+V	Molho todos os vasos.
+V	Molho um dia sim, um dia não as plantas.
+V	Molho uma semana seguida o canteiro.
+# evaluative nouns as the head of an object
+V	Molho uma delícia de bolo no café.
+V	Molho um achado de esponja.
+# hyphen rule versus enclitics
+V	Molho-o.
+V	Molho-a toda.
+V	Molho-os todos.
+V	Molho-me todo.
+V	Molho tudo-tudo.
+V	Molho o guarda-chuva.
+V	Molho os pés-de-galinha.
+V	Molho a couve-flor.
+V	Molho um pano-do-pó.
+N	Molho todo-o-terreno da avó.
+N	Molho tudo-em-um para massas.
+# reviews: degree and evaluative forms
+N	Molho um pouco salgado.
+N	Molho um bocadinho salgado.
+N	Molho um pouquinho picante.
+N	Molho um nadinha doce.
+N	Molho um tudo-nada ácido.
+N	Molho um pouco aguado demais.
+N	Molho uma delícia!
+N	Molho uma maravilha.
+N	Molho um espetáculo.
+N	Molho uma desgraça.
+N	Molho um mimo.
+N	Molho uma surpresa.
+N	Molho um pecado.
+N	Molho uma festa.
+N	Molho um must.
+N	Molho uma bomba de sabor.
+N	Molho um desastre total.
+N	Molho uma autêntica delícia.
+N	Molho uma verdadeira maravilha.
+N	Molho sempre o mesmo, sem graça.
+N	Molho o suficiente para quatro pessoas.
+N	Molho, o melhor de todos.
+N	Molho, uma delícia.
+# recipe steps and durations
+N	Molho a ferver, junte o sal.
+N	Molho a engrossar, baixe o lume.
+N	Molho a reduzir em lume brando.
+N	Molho a borbulhar, desligue o lume.
+N	Molho a cozinhar durante dez minutos.
+N	Molho a apurar.
+N	Molho todo o dia ao lume fica apurado.
+N	Molho uma noite no frigorífico fica melhor.
+N	Molho toda a noite no frigorífico.
+N	Molho 24 horas no frigorífico.
+N	Molho de um dia para o outro sabe melhor.
+# PR 39 round 2 probes. Column 1: N = sauce (môlho), V = verb (mólho). Natural unless marked "forced".
+V	Molho uma grande toalha.
+V	Molho uma bela toalha de linho.
+V	Molho uma grande esponja na bacia.
+V	Molho um grande pano e limpo a mesa.
+V	Molho um belo pedaço de pão no molho.
+V	Molho uma enorme fatia de pão no café.
+V	Molho um enorme balde de roupa.
+V	Molho uma perfeita camada de terra.
+V	Molho um verdadeiro monte de roupa.
+V	Molho um completo estranho com a mangueira.
+V	Molho uma pura lã antes de a lavar.
+V	Molho uma grande quantidade de grão.
+V	Molho um grande saco de feijão de véspera.
+V	Molho um belo bife no vinho.
+V	Molho uma grande bomba de água.
+V	Molho um pouco de pão no café.
+V	Molho um bocado de pão no leite.
+V	Molho um bocadinho de algodão em álcool.
+V	Molho um pouquinho de pão na sopa.
+V	Molho um tanto de pano.
+V	Molho uma noite inteira as sementes.
+V	Molho uma semana seguida o canteiro.
+V	Molho todos os dias seguidos as plantas.
+V	Molho uma hora inteira o grão.
+N	Molho uma autêntica delícia.
+N	Molho uma verdadeira maravilha.
+N	Molho um grande sucesso lá em casa.
+N	Molho uma bela porcaria, nem o cão come.
+N	Molho uma perfeita desgraça.
+N	Molho um puro luxo.
+N	Molho uma enorme desilusão.
+N	Molho um completo fracasso.
+N	Molho uma pura perfeição.
+N	Molho uma bela surpresa!
+N	Molho uma surpresa.
+N	Molho um mimo.
+N	Molho um pecado.
+N	Molho uma festa na boca.
+N	Molho uma desgraça.
+N	Molho um bocadinho salgado.
+N	Molho um pouquinho picante.
+N	Molho um nadinha doce.
+N	Molho um pouco salgado.
+N	Molho um bocado aguado.
+N	Molho um pouco de mais salgado.
+N	Molho um pouco demais.
+N	Molho uma noite inteira no frigorífico fica melhor.
+N	Molho uma semana inteira no frio.
+N	Molho um dia inteiro ao lume.
+N	Molho a borbulhar, baixe o lume.
+N	Molho a cozinhar durante dez minutos.
+N	Molho uma grande delícia de verão.
+N	Molho uma verdadeira bomba de sabor.
+N	Molho um enorme espetáculo.

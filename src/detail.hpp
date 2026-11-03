@@ -25,12 +25,13 @@ bool is_space(char32_t c);   // str.isspace()
 bool is_word(char32_t c);    // re's \w: str.isalnum() or '_'
 bool is_upper(char32_t c);   // str.isupper() on one code point
 bool is_digit(char32_t c);   // str.isdigit() on one code point
+bool is_alpha(char32_t c);   // str.isalpha() on one code point
 bool is_mn(char32_t c);      // unicodedata.category(c) == "Mn"
 bool is_printable(char32_t c);  // str.isprintable() on one code point
 U32 nfd(const U32& text);    // unicodedata.normalize("NFD", text)
 
-// True when Python's float(text) succeeds.
-bool py_float_ok(const std::string& text);
+// Python str.isdecimal(): not empty, and every code point is a decimal digit.
+bool py_isdecimal(const std::string& text);
 
 // Python str.strip() with no argument.
 std::string py_strip(const std::string& text);

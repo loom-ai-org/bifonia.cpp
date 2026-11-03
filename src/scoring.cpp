@@ -57,6 +57,19 @@ struct Lists {
     const WordSet& material_prep = V("material_prep");
     const WordSet& head_locative = V("head_locative");
     const WordSet& tola_det_prev = V("tola_det_prev");
+    const WordSet& molho_noun_prev = V("molho_noun_prev");
+    const WordSet& adverbial_de = V("adverbial_de");
+    const WordSet& object_pronouns = V("object_pronouns");
+    const WordSet& object_det = V("object_determiners");
+    const WordSet& a_locutions = V("a_locutions");
+    const WordSet& post_verb_adverbs = V("post_verb_adverbs");
+    const WordSet& frequency_nouns = V("frequency_nouns");
+    const WordSet& time_nouns = V("time_nouns");
+    const WordSet& degree_nouns = V("degree_nouns");
+    const WordSet& evaluative_nouns = V("evaluative_nouns");
+    const WordSet& evaluative_adj = V("evaluative_adjectives");
+    const WordSet& duration_modifiers = V("duration_modifiers");
+    const WordSet& por_contractions = V("por_contractions");
     const WordSet& bake_purpose = V("bake_purpose");
     const WordSet& first_person_nouns = V("first_person_nouns");
     const WordSet& para_prev_subj = V("para_prev_subj");
@@ -109,8 +122,15 @@ bool is_infinitive(const std::string& word) {
     return ends_with_any(detail::rstrip_chars(word, ".,;:!?"), {"ar", "er", "ir"});
 }
 
+// A digit string, optionally negative, or a cardinal number word.
 bool is_numeric(const std::string& word) {
-    return detail::py_float_ok(word) || contains(L().t.NUMERIC, word);
+    const std::string digits = detail::starts_with(word, "-") ? word.substr(1) : word;
+    return detail::py_isdecimal(digits) || contains(L().t.NUMERIC, word);
+}
+
+// Python's `word[-1:] in chars`, which is also true for an empty word.
+bool ends_in(const std::string& word, std::string_view chars) {
+    return word.empty() || detail::last_in(word, chars);
 }
 
 // words[max(0, idx - k)] stripped, for k = 1..count where idx - k >= 0.
@@ -191,6 +211,48 @@ std::string resolve_molho(const Words& words, long idx) {
     if (next_word == "de" && contains(l.bundle_things, m2)) return "bundle";
     if (next_word == "de" && contains(l.bundle_ambig, m2) && any_in(left4, l.bundle_verbs)) return "bundle";
     return "sauce";
+}
+
+// A clause-initial "molho" followed by its direct object, past adverbs and
+// fixed locutions, is the verb molhar.
+bool molho_takes_object(const Words& words, long idx) {
+    const Lists& l = L();
+    auto adverb = [&](const std::string& w) {
+        return w == "mais" ||
+               in(w, {&l.adv_bridge, &l.neg_adv, &l.post_verb_adverbs, &l.deferral_adv, &l.intensifiers});
+    };
+    if (detail::starts_with(next(words, idx), "-")) return true;
+    long j = idx + 1;
+    while (j < size(words)) {
+        const std::string tok = S(words, j);
+        const std::string after = j + 1 < size(words) ? S(words, j + 1) : "";
+        const std::string after2 = j + 2 < size(words) ? S(words, j + 2) : "";
+        const bool um = tok == "um" || tok == "uma";
+        if (um && (contains(l.evaluative_nouns, after) ||
+                   (contains(l.evaluative_adj, after) && contains(l.evaluative_nouns, after2)))) {
+            return false;
+        }
+        if (um && contains(l.degree_nouns, after) && after2 == "de") return true;
+        if (detail::starts_with(after, "-") && in(tok, {&l.object_pronouns, &l.object_det})) return false;
+        const bool todo = tok == "todo" || tok == "toda" || tok == "todos" || tok == "todas" || um;
+        if (todo && (contains(l.time_nouns, after) ||
+                     (contains(l.articles, after) && contains(l.time_nouns, after2)))) {
+            j += contains(l.time_nouns, after) ? 1 : 2;
+            if (j + 1 < size(words) && contains(l.duration_modifiers, S(words, j + 1))) ++j;
+        } else if ((tok == "de" && contains(l.adverbial_de, after)) ||
+                   ((tok == "a" || tok == "à") && contains(l.a_locutions, after)) ||
+                   (in(tok, {&l.t.NUMERIC, &l.t.QUANT}) && contains(l.frequency_nouns, after)) ||
+                   (um && contains(l.degree_nouns, after))) {
+            ++j;
+        } else if (in(tok, {&l.object_pronouns, &l.object_det})) {
+            return true;
+        } else if (!adverb(tok)) {
+            return false;
+        }
+        if (ends_in(at(words, j), ".!?;:,")) return false;
+        ++j;
+    }
+    return false;
 }
 
 std::string resolve_by_cues(const std::string& word, const Words& words, long idx) {
@@ -330,6 +392,22 @@ int score_noun(const Words& words, long idx) {
             score += 6;
         } else {
             score = 0;
+        }
+    }
+
+    if (word == "molho") {
+        const bool no_object = !in(next_word, {&l.articles, &t.QUANT}) && !detail::starts_with(next_word, "-");
+        const bool relative = in(prev2(words, idx), {&t.DET, &l.por_contractions});
+        if ((prev_word == "qual" || prev_word == "quais") && !relative) {
+            score += 12;
+        } else if (contains(l.molho_noun_prev, prev_word) && no_object) {
+            score += 8;
+        }
+        if (idx == 0 || ends_in(at(words, idx - 1), ",;:")) {
+            if (!molho_takes_object(words, idx)) score += 8;
+        } else if (next_word == "de") {
+            const std::string after_de = idx + 2 < size(words) ? S(words, idx + 2) : "";
+            if (!contains(l.adverbial_de, after_de)) score += 4;
         }
     }
     return score;
