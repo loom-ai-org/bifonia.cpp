@@ -103,12 +103,13 @@ if(BIFONIA_BUILD_TESTS)
     add_test(NAME examples COMMAND bifonia_examples)
     set_tests_properties(examples PROPERTIES ENVIRONMENT "BIFONIA_DATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/data")
 
-    # Installs into a prefix that is not CMAKE_INSTALL_PREFIX and runs a
-    # program installed there with no BIFONIA_DATA_DIR.
+    # Installs into prefixes that are not CMAKE_INSTALL_PREFIX and runs a
+    # program that links the installed library with no BIFONIA_DATA_DIR.
     add_test(NAME relocated_install
              COMMAND ${CMAKE_COMMAND} -DBUILD_DIR=${CMAKE_CURRENT_BINARY_DIR} -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
                      -DPREFIX=${CMAKE_CURRENT_BINARY_DIR}/relocated-install -DINSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
-                     -DBINDIR=${CMAKE_INSTALL_BINDIR} -DDATADIR=${CMAKE_INSTALL_DATADIR}
+                     -DBINDIR=${CMAKE_INSTALL_BINDIR} -DLIBDIR=${CMAKE_INSTALL_LIBDIR}
+                     -DDATADIR=${CMAKE_INSTALL_DATADIR} "-DGENERATOR=${CMAKE_GENERATOR}"
                      -DCXX_COMPILER=${CMAKE_CXX_COMPILER} "-DCXX_FLAGS=${CMAKE_CXX_FLAGS}"
                      -DBUILD_TYPE=${CMAKE_BUILD_TYPE}
                      -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/relocated_install.cmake)

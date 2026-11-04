@@ -1,6 +1,8 @@
 #include <dlfcn.h>
-#ifdef __linux__
+#if defined(__linux__)
 #include <sys/auxv.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
 #endif
 
 #include <algorithm>
@@ -43,21 +45,25 @@ std::string relocated_data_dir() {
     Dl_info self{};
     if (dladdr(reinterpret_cast<void*>(&data_dir), &self) == 0 || self.dli_fname == nullptr) return {};
     fs::path object = self.dli_fname;
-#ifdef __linux__
+    // A shared library finds the data from LIBDIR, the main program from BINDIR.
+    const char* relative = BIFONIA_DATA_FROM_LIBDIR;
+#if defined(__linux__)
     // glibc names the main program by argv[0], which need not be a path.
     Dl_info program{};
     if (dladdr(reinterpret_cast<void*>(getauxval(AT_PHDR)), &program) != 0 &&
-        program.dli_fbase == self.dli_fbase)
+        program.dli_fbase == self.dli_fbase) {
         object = "/proc/self/exe";
+        relative = BIFONIA_DATA_FROM_BINDIR;
+    }
+#elif defined(__APPLE__)
+    if (self.dli_fbase == static_cast<const void*>(_dyld_get_image_header(0))) relative = BIFONIA_DATA_FROM_BINDIR;
+#else
+    return {};
 #endif
     std::error_code ec;
-    const fs::path dir = fs::canonical(object, ec).parent_path();
-    if (ec) return {};
-    for (const char* relative : {BIFONIA_DATA_FROM_LIBDIR, BIFONIA_DATA_FROM_BINDIR}) {
-        const fs::path candidate = (dir / relative).lexically_normal();
-        if (fs::is_regular_file(candidate / "heterophonic_homographs.csv", ec)) return candidate.string();
-    }
-    return {};
+    const fs::path candidate = (fs::canonical(object, ec).parent_path() / relative).lexically_normal();
+    if (ec || !fs::is_regular_file(candidate / "heterophonic_homographs.csv", ec)) return {};
+    return candidate.string();
 }
 }  // namespace
 
