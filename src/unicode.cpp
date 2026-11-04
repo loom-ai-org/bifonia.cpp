@@ -1,3 +1,10 @@
+#include <dlfcn.h>
+#if defined(__linux__)
+#include <sys/auxv.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
+
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
@@ -11,6 +18,12 @@
 #ifndef BIFONIA_DEFAULT_DATA_DIR
 #define BIFONIA_DEFAULT_DATA_DIR "data"
 #endif
+#ifndef BIFONIA_DATA_FROM_LIBDIR
+#define BIFONIA_DATA_FROM_LIBDIR "../share/bifonia"
+#endif
+#ifndef BIFONIA_DATA_FROM_BINDIR
+#define BIFONIA_DATA_FROM_BINDIR "../share/bifonia"
+#endif
 
 namespace bifonia {
 
@@ -22,6 +35,35 @@ std::mutex& data_dir_mutex() {
 std::optional<std::string>& data_dir_override() {
     static std::optional<std::string> value;
     return value;
+}
+
+// The installed data directory beside the shared library or the executable
+// that holds this code, so that an install moved to another prefix finds its
+// data. Empty when that directory does not hold the data.
+std::string relocated_data_dir() {
+    namespace fs = std::filesystem;
+    Dl_info self{};
+    if (dladdr(reinterpret_cast<void*>(&data_dir), &self) == 0 || self.dli_fname == nullptr) return {};
+    fs::path object = self.dli_fname;
+    // A shared library finds the data from LIBDIR, the main program from BINDIR.
+    const char* relative = BIFONIA_DATA_FROM_LIBDIR;
+#if defined(__linux__)
+    // glibc names the main program by argv[0], which need not be a path.
+    Dl_info program{};
+    if (dladdr(reinterpret_cast<void*>(getauxval(AT_PHDR)), &program) != 0 &&
+        program.dli_fbase == self.dli_fbase) {
+        object = "/proc/self/exe";
+        relative = BIFONIA_DATA_FROM_BINDIR;
+    }
+#elif defined(__APPLE__)
+    if (self.dli_fbase == static_cast<const void*>(_dyld_get_image_header(0))) relative = BIFONIA_DATA_FROM_BINDIR;
+#else
+    return {};
+#endif
+    std::error_code ec;
+    const fs::path candidate = (fs::canonical(object, ec).parent_path() / relative).lexically_normal();
+    if (ec || !fs::is_regular_file(candidate / "heterophonic_homographs.csv", ec)) return {};
+    return candidate.string();
 }
 }  // namespace
 
@@ -36,7 +78,8 @@ std::string data_dir() {
         if (data_dir_override()) return *data_dir_override();
     }
     if (const char* env = std::getenv("BIFONIA_DATA_DIR"); env != nullptr && *env != '\0') return env;
-    return BIFONIA_DEFAULT_DATA_DIR;
+    static const std::string relocated = relocated_data_dir();
+    return relocated.empty() ? BIFONIA_DEFAULT_DATA_DIR : relocated;
 }
 
 }  // namespace bifonia
