@@ -93,7 +93,9 @@ private:
 // infopedia_pt.csv, the two sense_model_*.json files and locale/<lang>/*.voc.
 // In order of precedence:
 // the value given to set_data_dir(), the environment variable
-// BIFONIA_DATA_DIR, and the directory compiled in at build time. Each file is
+// BIFONIA_DATA_DIR, the data directory of the install that holds the library
+// (found from the path of the shared library or of the program), and the
+// directory compiled in at build time. Each file is
 // read once, on first use, and then cached; set the directory before the first
 // call.
 void set_data_dir(const std::string& path);

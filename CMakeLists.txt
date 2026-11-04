@@ -24,6 +24,11 @@ if(IS_ABSOLUTE "${BIFONIA_DATA_INSTALL_DIR}")
 else()
     set(_bifonia_default_data "${CMAKE_INSTALL_PREFIX}/${BIFONIA_DATA_INSTALL_DIR}")
 endif()
+# The library looks for its data relative to the installed library, or to the
+# executable it is linked into, before the absolute path, so an install made
+# with `cmake --install --prefix` into another prefix finds its data.
+file(RELATIVE_PATH _bifonia_data_from_lib "${CMAKE_INSTALL_FULL_LIBDIR}" "${CMAKE_INSTALL_FULL_DATADIR}/bifonia")
+file(RELATIVE_PATH _bifonia_data_from_bin "${CMAKE_INSTALL_FULL_BINDIR}" "${CMAKE_INSTALL_FULL_DATADIR}/bifonia")
 
 add_library(bifonia
     src/unicode.cpp
@@ -44,7 +49,9 @@ target_include_directories(bifonia
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
-target_compile_definitions(bifonia PRIVATE BIFONIA_DEFAULT_DATA_DIR="${_bifonia_default_data}")
+target_compile_definitions(bifonia PRIVATE BIFONIA_DEFAULT_DATA_DIR="${_bifonia_default_data}"
+    BIFONIA_DATA_FROM_LIBDIR="${_bifonia_data_from_lib}" BIFONIA_DATA_FROM_BINDIR="${_bifonia_data_from_bin}")
+target_link_libraries(bifonia PRIVATE ${CMAKE_DL_LIBS})
 set_target_properties(bifonia PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(bifonia PRIVATE -Wall -Wextra -Wpedantic)
@@ -95,4 +102,14 @@ if(BIFONIA_BUILD_TESTS)
     target_link_libraries(bifonia_examples PRIVATE bifonia)
     add_test(NAME examples COMMAND bifonia_examples)
     set_tests_properties(examples PROPERTIES ENVIRONMENT "BIFONIA_DATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/data")
+
+    # Installs into a prefix that is not CMAKE_INSTALL_PREFIX and runs a
+    # program installed there with no BIFONIA_DATA_DIR.
+    add_test(NAME relocated_install
+             COMMAND ${CMAKE_COMMAND} -DBUILD_DIR=${CMAKE_CURRENT_BINARY_DIR} -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                     -DPREFIX=${CMAKE_CURRENT_BINARY_DIR}/relocated-install -DINSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
+                     -DBINDIR=${CMAKE_INSTALL_BINDIR} -DDATADIR=${CMAKE_INSTALL_DATADIR}
+                     -DCXX_COMPILER=${CMAKE_CXX_COMPILER} "-DCXX_FLAGS=${CMAKE_CXX_FLAGS}"
+                     -DBUILD_TYPE=${CMAKE_BUILD_TYPE}
+                     -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/relocated_install.cmake)
 endif()

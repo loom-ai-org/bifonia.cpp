@@ -37,7 +37,11 @@ Each source file under `src/` matches one Python module.
 The library reads its data at run time: the homograph table, the word lists
 under `locale/`, the infopedia table and the two sense models. `cmake --install`
 puts them in `<prefix>/share/bifonia`, and the library looks there by default.
-To use another directory, set the environment variable `BIFONIA_DATA_DIR` or
+The library finds that directory from the path of the shared library, or of the
+program that links the static library, so an install that
+`cmake --install --prefix` puts in another prefix finds its own data. When that
+directory does not hold the data, the library uses the install location that
+the build compiles in. To use another directory, set the environment variable `BIFONIA_DATA_DIR` or
 call `bifonia::set_data_dir()` before the first call. Each file is read once and
 then cached, so repeated calls are cheap.
 
