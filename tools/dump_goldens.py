@@ -18,6 +18,8 @@ Files written to --out-dir:
                       lect tags
   lect_nfd.csv        a lect_overrides.csv whose forms are not in NFC
   lect_nfd.jsonl.gz   lect calls with lect_nfd.csv in place of the shipped table
+  lect_reject.jsonl.gz  lect tables that the loader rejects, with the line and
+                      the message of each rejection
 
 Sentence corpora:
   --test-sentences  bifonia tests/test_sentences.jsonl (each sentence as given,
@@ -38,6 +40,7 @@ import argparse
 import copy
 import csv
 import gzip
+import importlib
 import importlib.metadata
 import io
 import json
@@ -251,6 +254,59 @@ PROPER_FRAMES = (
 )
 
 
+# Frames for the sentence ends of proper_flags: "…" and the closing quotes and
+# brackets before a full stop, a later sentence start, the word after a colon
+# (direct speech too), a lower-case word after the first token, a bare number
+# against a roman numeral and nº, abbreviations, word-internal apostrophes, and
+# a token whose case rests on a title-case letter or an Other_Lowercase letter.
+SENTENCE_END_FRAMES = (
+    "{T}… Depois descanso.", "{T}…Depois descanso.", "Bem… {T} PS aprova", "Bem… {L} 3 vezes por semana.",
+    "Bem… {T} 3 vezes por semana.", "Bem... {T} Corá fica longe", "Bem… {L} Bonito.", "{T}»»…!? Depois",
+    "«{T}». Depois descanso.", "“{T}”. Depois descanso.", "‘{T}’. Depois descanso.",
+    "‹{T}›. Depois descanso.", '"{T}". Depois descanso.', "'{T}'. Depois descanso.",
+    "({T}). Depois descanso.", "[{T}]. Depois descanso.", "«{T}» PS aprova", "({T}) Corá fica longe",
+    "Ele disse «sim». {T} PS aprova", "Vi o filme (ontem)! {T} Corá fica longe",
+    "Foi assim [sic]? {T} IV", "Ele disse ‘não’… {T} D. Fernando", "«{T}»… Depois descanso.",
+    "Ele disse: {T} amanhã.", 'Ele disse: "{T} amanhã."', "Ele disse: — {T} amanhã.",
+    "Ele disse: «{T} amanhã.»", "Ele perguntou: — {T}?", "Ele disse: -{T} PS aprova",
+    "Atenção: {T} Bonito", "Atenção: {T} Bonito hoje", "Nota: {T} PS aprova orçamento.",
+    "Programa: {T} IV e {T} V.", "Tenho uma coisa a dizer: {L} amanhã.", "Começa às 10:30 {T} Bonito.",
+    "Ele disse: {L} Bonito", "Ele disse: {U} PS",
+    "Bem. {L} PS aprova", "Ontem: {L} Corá", "O {L} Bonito venceu.", "{L} Corá fica longe",
+    "{L} nº 13", "{L} Bonito venceu.", "{L} IV",
+    "Bem. {T} 2 vezes por semana.", "{T} 3 vezes por semana.", "Bem. {T} IV", "Bem. {T} V.",
+    "Bem. {T} nº 13", "Bem. {T} n.º 13", "Bem. {T} N.º 4", "Bem. {T} nr 5", "Bem. {T} 1.º lugar",
+    "Bem. {T} Nº 2", "{T} n.ºs 13",
+    "o Sr. {T} Lopes", "a D. {T} Lima", "o Dr. {T} ontem", "Comprei bolas, etc. {T} bonito",
+    "Comprei bolas, etc. e {L} 3 vezes", "O Sr. {L} não existe.", "a Sr.ª {T} Lopes",
+    "Moro na Av. {T} de Paz.",
+    "{T} d'água", "{T} d'Alma", "Rock'n'roll. {T} PS aprova", "copo d'{L} fria", "{T} d'Água fria",
+    "eu vi {L} Aǅ", "eu vi {L} AǅB", "eu vi {L} Aª", "eu vi {L} AᾈB", "{U} AǅB", "{U} Aª",
+    "{U} AᾈB", "{T} Aǅ",
+)
+
+# Fixed sentences for the same rules.
+SENTENCE_END_SENTENCES = (
+    "Atenção: Jogo Bonito", "Atenção: Jogo Bonito hoje", 'Ele disse: "Jogo amanhã."',
+    "Ele disse: Jogo amanhã.", "Ele confessou: Gosto muito de ti.", "O Pedro perguntou: Choro?",
+    "Nota: Gosto de praticar ioga.", "Bem… jogo 3 vezes por semana.", "Bem... jogo 3 vezes por semana.",
+    "Bem… jogo Bonito.", "Sou sensível. Choro 2 vezes por semana.",
+    "Leia a pág. 12. Jogo 2 vezes por semana.", "Ontem descansei. Jogo FIFA todos os dias.",
+    "Já é tarde. Acordo Maria às sete.", "o Dr. Jogo Bonito", "a D. Choro Lima", "o Sr. Governo Lopes",
+    "o Prof. Acordo Silva", "o J. Choro Mendes", "Encontrei o Dr. Jogo ontem.", "etc. Jogo bonito",
+    "etc. e jogo 3 vezes", "Choro d'Alma", "Rock'n'roll.", "Jogo»»…!? Depois", "…", "«».", "»Jogo",
+    "İJogo. Jogo 3", "n.º 13", "N.º 13", "n. º 13", "Choro n.º 13", "Choro n.ºs 13", "Jogo nº 4",
+    "Ouvi o concerto. Choro n.º 13 é belo.", "‘Acordo’, disse ele, ‘cedo’.", "'Jogo', disse ele.",
+    "Governo: PS aprova orçamento.", "Acordo: Governo e sindicatos assinam.",
+    "Convidado: Choro Lima, músico.", "Hoje. JOGO BONITO venceu.", "JOGO BONITO VENCEU.",
+    "jogo Bonito venceu.", "choro nº 13", "o Paulo tem a tola dura", "Cobro €15 pela tradução urgente.",
+    "Jogo… Depois descanso.", "Acordo… Depois saio.", "Jogo…", "Jogo…!", "Jogo…:", "Jogo:…",
+    "Jogo.» Depois", "Jogo».", "Jogo» .", "Jogo »!", "Jogo)].", "Jogo)]… PS", "Jogo’s. PS",
+    "PS: Jogo amanhã", "PS:Jogo Bonito", "a:B C", "a.B C", "Eu vi o AǅB ontem", "Eu vi o Aǅ ontem",
+    "Eu vi o Aª ontem", "Eu vi o ǅ ontem", "Eu vi o ǅA ontem",
+)
+
+
 def proper_sentences():
     for word in data.HOMOGRAPHS:
         mixed = "".join(c.upper() if k % 2 == 0 else c for k, c in enumerate(word))
@@ -258,6 +314,12 @@ def proper_sentences():
                  "S": word.capitalize().swapcase(), "M": mixed}
         for frame in PROPER_FRAMES:
             yield frame.format(**forms)
+    # After the frames above, so that no earlier input moves.
+    for word in data.HOMOGRAPHS:
+        forms = {"T": word.capitalize(), "U": word.upper(), "L": word}
+        for frame in SENTENCE_END_FRAMES:
+            yield frame.format(**forms)
+    yield from SENTENCE_END_SENTENCES
 
 
 def voc_sentences():
@@ -797,23 +859,27 @@ def lect_calls():
         prev = cur
 
 
-# Override forms that are not in NFC. LECT_NFD_ROWS adds rows for test lects
-# to the shipped rows, which are put in NFD. "x-nfc" holds one form per string
-# that NFC changes: each primary composite in NFD, each code point that NFC
-# replaces, Hangul jamo and seeded runs of combining marks.
+# Override forms that are not in NFC, and that load: in NFC each form is as
+# long as its word and keeps no combining mark. LECT_NFD_ROWS adds rows for test
+# lects to the shipped rows, which are put in NFD. "x-nfc" holds one form per
+# string that NFC changes and leaves without a combining mark: each primary
+# composite in NFD, each code point that NFC replaces, Hangul jamo and seeded
+# runs of combining marks. Its word is a CJK ideograph, padded to the length
+# of the form.
 LECT_NFD_ROWS = (
     ("pt-AO", "para", "pa\u0301ra"), ("pt-AO", "sede", "se\u0302de"), ("pt-AO", "jogo", "jo\u0302go"),
     ("pt-AO", "acordo", "aco\u0302rdo"), ("pt-AO", "soma", "so\u0302ma"), ("pt-AO", "molho", "mo\u0301lho"),
     ("pt-AO", "governo", "gove\u0302rno"), ("pt-AO", "pelo", "pe\u0302lo"),
     # marks that NFC reorders, then composes in one or two steps
     ("pt-MZ", "soma", "so\u0323\u0302ma"), ("pt-MZ", "jogo", "jo\u0302\u0323go"),
-    ("pt-MZ", "sede", "se\u0302\u0301de"), ("pt-MZ", "para", "pa\u0301\u0323ra"),
-    # forms that stay longer than the word after NFC
-    ("pt-CV", "soma", "so\u0301\u0302ma"), ("pt-CV", "jogo", "j\u0331ogo"),
-    ("pt-CV", "acordo", "aco\u0344rdo"), ("pt-CV", "para", "\u212bpara"), ("pt-CV", "sede", "se\u0340de"),
+    ("pt-MZ", "sede", "se\u0302\u0301de"), ("pt-GW", "soma", "so\u0302\u0301ma"),
+    # a singleton that NFC replaces by a mark that composes
+    ("pt-CV", "sede", "se\u0340de"),
+    # an empty form, and marks of class 0, which the loader does not see
+    ("pt-GW", "para", ""), ("pt-GW", "jogo", "jo\u034fg"), ("pt-GW", "sede", "s\ufe0fde"),
 )
 
-LECT_NFD_TAGS = ("pt-BR", "pt-br-x-rj", "pt-UY", "pt-AO", "pt_ao", "pt-MZ", "pt-CV", "pt-PT", None)
+LECT_NFD_TAGS = ("pt-BR", "pt-br-x-rj", "pt-UY", "pt-AO", "pt_ao", "pt-MZ", "pt-CV", "pt-GW", "pt-PT", None)
 
 LECT_NFD_SENTENCES = (
     "A soma dá dez.", "SOMA", "Soma tudo.", "sOmA", "O abono de família chegou.",
@@ -824,10 +890,8 @@ LECT_NFD_SENTENCES = (
 )
 
 
-def lect_nfd_rows():
-    with open(pathlib.Path(data.__file__).parent / "data" / "lect_overrides.csv", encoding="utf-8") as fh:
-        rows = [(r["lang"], r["word"], unicodedata.normalize("NFD", r["form"])) for r in csv.DictReader(fh)]
-    rows += LECT_NFD_ROWS
+def nfc_strings():
+    """Every string that NFC changes, in a fixed order."""
     strings = []
     for cp in range(0x110000):
         c = chr(cp)
@@ -845,7 +909,23 @@ def lect_nfd_rows():
     bases = "aeiouAEIOUcCnNsSyYzZ\u03b1\u03c9\u0418\u0928\u3046"
     for _ in range(1000):
         strings.append(rng.choice(bases) + "".join(rng.choice(marks) for _ in range(rng.randint(1, 4))))
-    rows += [("x-nfc", f"w{k}", s) for k, s in enumerate(strings)]
+    return strings
+
+
+def keeps_mark(s):
+    return any(unicodedata.combining(c) for c in unicodedata.normalize("NFC", s))
+
+
+def nfc_word(k, s):
+    """A word as long as the NFC form of s, unique for each k."""
+    return chr(0x4E00 + k) + "w" * (len(unicodedata.normalize("NFC", s)) - 1)
+
+
+def lect_nfd_rows():
+    with open(pathlib.Path(data.__file__).parent / "data" / "lect_overrides.csv", encoding="utf-8") as fh:
+        rows = [(r["lang"], r["word"], unicodedata.normalize("NFD", r["form"])) for r in csv.DictReader(fh)]
+    rows += LECT_NFD_ROWS
+    rows += [("x-nfc", nfc_word(k, s), s) for k, s in enumerate(nfc_strings()) if not keeps_mark(s)]
     return rows
 
 
@@ -854,6 +934,86 @@ def write_lect_nfd_csv(path):
         out = csv.writer(fh, lineterminator="\n")
         out.writerow(("lang", "word", "form"))
         out.writerows(lect_nfd_rows())
+
+
+# Lect tables that the loader rejects: a form whose NFC is not as long as its
+# word, or that keeps a combining mark in NFC. Each case is the whole text of
+# lect_overrides.csv. The cases vary the place of the bad row (after the
+# shipped rows, after blank lines, after a field that spans two lines, with
+# CRLF or CR line ends, on a last line with no newline) and the quoting of the
+# form and the word in the message.
+def lect_reject_cases():
+    shipped = (pathlib.Path(data.__file__).parent / "data" / "lect_overrides.csv").read_text(encoding="utf-8")
+    head = "lang,word,form\n"
+
+    def table(*rows, end="\n"):
+        buffer = io.StringIO()
+        csv.writer(buffer, lineterminator=end).writerows(rows)
+        return buffer.getvalue()
+
+    for row in (("pt-CV", "soma", "so\u0301\u0302ma"), ("pt-CV", "jogo", "j\u0331ogo"),
+                ("pt-CV", "acordo", "aco\u0344rdo"), ("pt-CV", "para", "\u212bpara"),
+                ("pt-MZ", "para", "pa\u0301\u0323ra")):
+        yield shipped + table(row)
+    for row in (("pt-BR", "soma", "sôma "), ("pt-BR", "soma", "sôm"), ("pt-BR", "soma", "so\u0302m"),
+                ("pt-BR", "soma", "so\u0301\u0302m"), ("pt-BR", "jogo", "j\u0331og"),
+                ("pt-BR", "soma", "so\u0131\u0301"), ("pt-BR", "d'água", "d'águ"),
+                ("pt-BR", "a'b\"c", "a'b"), ("pt-BR", "a\\b", "a\\bc"), ("pt-BR", "w\u200bx", "w"),
+                ("pt-BR", "almoc\u0327o", "almôço"), ("pt-BR", "x", "\U0001d15e"),
+                ("pt-BR", "xx", "\U0001d15e"), ("pt-BR", "soma", "sôma\tx"), ("pt-BR", "soma", "s\x7fm")):
+        yield head + table(row)
+    yield head + "pt-BR,soma,\"sô\nma\"\npt-BR,jogo,jôgo\n"
+    yield head + "pt-BR,jogo,jôgo\npt-BR,soma,\"sô\nma\"\n"
+    yield head + "pt-BR,soma,\"s\no\nma\"\npt-BR,para,pára\n"
+    yield head + "pt-BR,soma,sôma\npt-BR,jogo,\"jo,go\"\n"
+    yield head + "\n\npt-BR,soma,sôma\n\npt-BR,jogo,jôg\n"
+    yield table(("lang", "word", "form"), ("pt-BR", "soma", "sôma"), ("pt-BR", "jogo", "jôg"), end="\r\n")
+    yield table(("lang", "word", "form"), ("pt-BR", "soma", "sôma"), ("pt-BR", "jogo", "jôg"), end="\r")
+    yield head + "pt-BR,soma,sôma\npt-BR,jogo,jôg"
+    yield head + "pt-BR,soma,\npt-BR,para,\npt-BR,jogo,j\u0331og\n"
+    yield head + "pt-BR,soma,sôm\npt-BR,jogo,j\u0331og\n"
+    yield head + "pt-BR,jogo,j\u0331og\npt-BR,soma,sôm\n"
+    yield shipped.replace("\n", "\r\n") + table(("pt-UY", "soma", "sôma "))
+    for k, s in enumerate(nfc_strings()):
+        if keeps_mark(s):
+            yield head + table(("x-nfc", nfc_word(k, s), s))
+
+
+def lect_reject_records(package):
+    """Load each case of lect_reject_cases with the loader of the package copy in
+    package, and record the exception. A message starts with the path of the
+    table, which is dropped, so that the record does not hold the path."""
+    loader = data
+    assert loader.__file__.startswith(package)
+    path = loader._LECT_CSV
+    prefix = str(path)
+    for case in lect_reject_cases():
+        with open(path, "w", encoding="utf-8", newline="") as fh:
+            fh.write(case)
+        try:
+            importlib.reload(loader)
+        except ValueError as exc:
+            msg = str(exc)
+            if not msg.startswith(prefix):
+                raise SystemExit(f"lect_reject: the message does not start with the path: {msg!r}")
+            yield ["lect_reject", case, {"err": type(exc).__name__, "msg": msg[len(prefix):]}]
+        else:
+            raise SystemExit(f"lect_reject: the loader accepts {case!r}")
+
+
+def lect_reject_calls():
+    """lect_reject_records in a child interpreter, on a copy of the package."""
+    with tempfile.TemporaryDirectory() as tmp:
+        package = pathlib.Path(bifonia.__file__).parent
+        shutil.copytree(package, pathlib.Path(tmp) / "bifonia",
+                        ignore=shutil.ignore_patterns("__pycache__", "corpus.jsonl"))
+        code = ("import sys; sys.path[:0] = sys.argv[1:3]; import bifonia, dump_goldens; "
+                "assert bifonia.__file__.startswith(sys.argv[1]); "
+                "sys.stdout.reconfigure(encoding='utf-8'); "
+                "[print(dump_goldens.dumps(r)) for r in dump_goldens.lect_reject_records(sys.argv[1])]")
+        child = subprocess.run([sys.executable, "-I", "-B", "-c", code, tmp, str(pathlib.Path(__file__).parent)],
+                               capture_output=True, encoding="utf-8", check=True)
+    return child.stdout.splitlines()
 
 
 def lect_nfd_records():
@@ -966,6 +1126,13 @@ def main():
         raise SystemExit(f"lect_nfd: {expected} calls expected, {len(nfd_calls)} written")
     write(out / "lect_nfd.jsonl.gz", nfd_calls, header)
     print(f"lect_nfd: {nfd_rows} rows, {expected} in, {len(nfd_calls)} out", file=sys.stderr)
+
+    reject_cases = sum(1 for _ in lect_reject_cases())
+    reject_calls = lect_reject_calls()
+    if len(reject_calls) != reject_cases:
+        raise SystemExit(f"lect_reject: {reject_cases} cases, {len(reject_calls)} written")
+    write(out / "lect_reject.jsonl.gz", reject_calls, header)
+    print(f"lect_reject: {reject_cases} in, {len(reject_calls)} out", file=sys.stderr)
 
     # Route every word to the model, so the model branch of guess_sense decides.
     forced_inputs = [s for s in inputs if detail[s]] + [s for s in inputs if not detail[s]][::7]
