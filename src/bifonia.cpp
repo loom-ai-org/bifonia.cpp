@@ -219,21 +219,28 @@ std::vector<bool> proper_flags(const std::string& text) {
         const U32& prev = toks[i - 1];
         const bool boundary =
             !prev.empty() && std::u32string_view(U".!?:…").find(prev.back()) != std::u32string_view::npos;
-        if (!core.empty() && detail::is_upper(core[0]) && !boundary) flags[i] = true;
+        // A word in capitals is not a name signal on its own.
+        if (!core.empty() && detail::is_upper(core[0]) && !detail::py_isupper(core) && !boundary) flags[i] = true;
     }
-    if (toks.size() > 1) {
+    // A first word that ends its sentence starts no phrase. A colon does not end
+    // a sentence: "Governo: PS aprova orçamento." is a label.
+    if (toks.size() > 1 && std::u32string_view(U".!?").find(toks[0].back()) == std::u32string_view::npos) {
         auto strip_punct = [](const U32& t) {
             size_t b = 0, e = t.size();
             while (b < e && is_edge_punct(t[b])) ++b;
             while (e > b && is_edge_punct(t[e - 1])) --e;
             return t.substr(b, e - b);
         };
+        const U32 first = lstrip_dash(toks[0]);
+        const bool title_first = !first.empty() && detail::is_upper(first[0]) && !detail::py_isupper(first);
         U32 nxt = strip_punct(lstrip_dash(toks[1]));
         // The split turns "n.º" into "n." and "º"; read the pair as "nº".
         if (detail::py_lower(toks[1]) == U"n." && toks.size() > 2 && strip_punct(toks[2]) == U"º") nxt = U"nº";
         const std::string lowered = detail::to_utf8(detail::py_lower(nxt));
-        if ((!nxt.empty() && (detail::is_upper(nxt[0]) || detail::is_digit(nxt[0]))) || lowered == "nº" ||
-            lowered == "nr") {
+        // An all-caps next token (an acronym, a roman numeral, an initial) counts
+        // only after a first word in title case.
+        const bool caps_next = !nxt.empty() && detail::is_upper(nxt[0]) && (title_first || !detail::py_isupper(nxt));
+        if (caps_next || (!nxt.empty() && detail::is_digit(nxt[0])) || lowered == "nº" || lowered == "nr") {
             flags[0] = true;
         }
     }

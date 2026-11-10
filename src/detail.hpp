@@ -29,6 +29,8 @@ bool is_alpha(char32_t c);   // str.isalpha() on one code point
 bool is_mn(char32_t c);      // unicodedata.category(c) == "Mn"
 bool is_printable(char32_t c);  // str.isprintable() on one code point
 U32 nfd(const U32& text);    // unicodedata.normalize("NFD", text)
+U32 nfc(const U32& text);    // unicodedata.normalize("NFC", text)
+bool py_isupper(const U32& text);  // str.isupper()
 
 // Python str.isdecimal(): not empty, and every code point is a decimal digit.
 bool py_isdecimal(const std::string& text);

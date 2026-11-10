@@ -12,6 +12,7 @@
 #include <iterator>
 #include <mutex>
 #include <sstream>
+#include <utility>
 
 #include "detail.hpp"
 
@@ -155,7 +156,17 @@ unsigned char combining_class(char32_t c) {
 }
 
 constexpr char32_t kSBase = 0xAC00, kLBase = 0x1100, kVBase = 0x1161, kTBase = 0x11A7;
-constexpr char32_t kTCount = 28, kNCount = 21 * 28, kSCount = 19 * 21 * 28;
+constexpr char32_t kLCount = 19, kVCount = 21, kTCount = 28, kNCount = 21 * 28, kSCount = 19 * 21 * 28;
+
+// The primary composite of a pair, or 0.
+char32_t compose(char32_t first, char32_t second) {
+    const auto* end = std::end(kComp);
+    const auto* it = std::lower_bound(std::begin(kComp), end, std::make_pair(first, second),
+                                      [](const CompEntry& e, const std::pair<char32_t, char32_t>& v) {
+                                          return std::make_pair(e.first, e.second) < v;
+                                      });
+    return (it != end && it->first == first && it->second == second) ? it->composite : 0;
+}
 
 }  // namespace
 
@@ -314,6 +325,61 @@ U32 nfd(const U32& text) {
         i = j;
     }
     return out;
+}
+
+// The canonical composition of CPython's nfc_nfkc: each starter takes the next
+// character that no character between them blocks.
+U32 nfc(const U32& text) {
+    const U32 d = nfd(text);
+    U32 out;
+    out.reserve(d.size());
+    std::vector<bool> skipped(d.size(), false);
+    size_t i = 0;
+    while (i < d.size()) {
+        if (skipped[i]) {
+            ++i;
+            continue;
+        }
+        const char32_t c = d[i];
+        if (c >= kLBase && c < kLBase + kLCount && i + 1 < d.size() && d[i + 1] >= kVBase &&
+            d[i + 1] < kVBase + kVCount) {
+            char32_t syllable = kSBase + ((c - kLBase) * kVCount + (d[i + 1] - kVBase)) * kTCount;
+            i += 2;
+            if (i < d.size() && d[i] > kTBase && d[i] < kTBase + kTCount) syllable += d[i++] - kTBase;
+            out.push_back(syllable);
+            continue;
+        }
+        char32_t base = c;
+        int blocking = 0;  // the class of the last character that did not combine
+        for (size_t k = i + 1; k < d.size(); ++k) {
+            const int cls = combining_class(d[k]);
+            if (blocking != 0) {
+                if (cls == 0) break;
+                if (blocking >= cls) continue;
+            }
+            const char32_t composite = compose(base, d[k]);
+            if (composite == 0) {
+                if (cls == 0) break;
+                blocking = cls;
+                continue;
+            }
+            base = composite;
+            skipped[k] = true;
+        }
+        out.push_back(base);
+        ++i;
+    }
+    return out;
+}
+
+bool py_isupper(const U32& text) {
+    if (text.size() == 1) return is_upper(text[0]);
+    bool cased = false;
+    for (char32_t c : text) {
+        if (in_ranges(kLowerOrTitle, c)) return false;
+        if (is_upper(c)) cased = true;
+    }
+    return cased;
 }
 
 bool py_isdecimal(const std::string& text) {

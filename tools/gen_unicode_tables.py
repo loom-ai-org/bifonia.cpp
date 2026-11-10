@@ -2,8 +2,8 @@
 
 The C++ port must match Python's str.lower, str.upper, str.isspace,
 str.isalnum (the `\\w` class of `re`), str.isupper, str.isdigit, str.isalpha,
-the decimal digits of str.isdecimal and unicodedata.normalize("NFD") with the category
-Mn filter. The tables are taken from Python itself rather than from ICU, so the
+the decimal digits of str.isdecimal, unicodedata.normalize("NFD") and ("NFC") and the
+category Mn filter. The tables are taken from Python itself rather than from ICU, so the
 two agree on the same Unicode version; the version is written into the
 generated file.
 
@@ -73,6 +73,9 @@ def main():
     for name, pred in (("kSpace", str.isspace),
                        ("kWord", lambda c: c.isalnum() or c == "_"),
                        ("kIsUpper", str.isupper),
+                       # str.isupper() on a longer string fails at a lower-case
+                       # or title-case code point
+                       ("kLowerOrTitle", lambda c: not ("A" + c).isupper()),
                        ("kIsDigit", str.isdigit),
                        ("kIsAlpha", str.isalpha),
                        ("kMn", lambda c: unicodedata.category(c) == "Mn"),
@@ -119,6 +122,23 @@ def main():
     w(f"static const CccEntry kCcc[{len(ccc)}] = {{\n")
     for cp, c in ccc:
         w(f"  {{0x{cp:X}, {c}}},\n")
+    w("};\n\n")
+
+    # The primary composites: a canonical decomposition of two code points that
+    # NFC composes back. Hangul syllables are computed in code.
+    comp = []
+    for cp in points:
+        fields = unicodedata.decomposition(chr(cp)).split()
+        if hangul(cp) or len(fields) != 2 or fields[0].startswith("<"):
+            continue
+        first, second = (chr(int(f, 16)) for f in fields)
+        if unicodedata.normalize("NFC", first + second) == chr(cp):
+            comp.append((ord(first), ord(second), cp))
+    comp.sort()
+    w("struct CompEntry { char32_t first; char32_t second; char32_t composite; };\n")
+    w(f"static const CompEntry kComp[{len(comp)}] = {{\n")
+    for first, second, cp in comp:
+        w(f"  {{0x{first:X}, 0x{second:X}, 0x{cp:X}}},\n")
     w("};\n")
 
 

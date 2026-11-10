@@ -21,7 +21,7 @@
 
 namespace bifonia {
 
-inline constexpr const char* kPythonReference = "bifonia 0.3.9a1";
+inline constexpr const char* kPythonReference = "bifonia 0.3.12a1";
 
 using Words = std::vector<std::string>;
 using WordSet = std::unordered_set<std::string>;
@@ -155,9 +155,9 @@ void set_sense_model(std::shared_ptr<const model::SenseModel> sense_model);
 namespace version {
 inline constexpr int VERSION_MAJOR = 0;
 inline constexpr int VERSION_MINOR = 3;
-inline constexpr int VERSION_BUILD = 9;
+inline constexpr int VERSION_BUILD = 12;
 inline constexpr int VERSION_ALPHA = 1;
-inline constexpr const char* VERSION_STR = "0.3.9a1";
+inline constexpr const char* VERSION_STR = "0.3.12a1";
 }  // namespace version
 
 // ── bifonia.vocab ────────────────────────────────────────────────────────────
