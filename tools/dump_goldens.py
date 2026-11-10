@@ -18,10 +18,11 @@ Files written to --out-dir:
                       lect tags
 
 Sentence corpora:
-  --test-sentences  bifonia tests/test_sentences.jsonl (each sentence as given
-                    and lowercased)
+  --test-sentences  bifonia tests/test_sentences.jsonl (each sentence as given,
+                    lowercased, in capitals and with its case swapped)
   --hf-test         bifonia hf/test.jsonl (sentence and diacritized_sentence)
-  generated         every homograph in sentence frames, every .voc term in
+  generated         every homograph in sentence frames, every homograph and
+                    diacritized form in mixed case, every .voc term in
                     context, the "molho" clause frames, and a seeded fuzz set
   fixtures          tests/fixtures/molho_probes.tsv (the reading of "molho")
 
@@ -197,6 +198,30 @@ def frame_sentences():
     for word in data.HOMOGRAPHS:
         for v in variants(word):
             for frame in FRAMES:
+                yield frame.format(w=v)
+
+
+# Frames that steer different senses, with the homograph first and inside.
+CASE_FRAMES = (
+    "{w}", "{w} do partido", "A {w} DO PARTIDO FICA NO PORTO.", "tenho muita {w}",
+    "O {w} foi assinado", "eu {w} cedo", "{w}, {w}!", "não {w} AQUI",
+)
+
+
+def case_variants(word):
+    """The word in capitals and in three mixed-case patterns."""
+    return [word.upper(),
+            "".join(c.upper() if k % 2 == 0 else c for k, c in enumerate(word)),
+            "".join(c.upper() if k % 2 else c for k, c in enumerate(word)),
+            word[:-1] + word[-1:].upper()]
+
+
+def case_sentences():
+    """add_extra_diacritics gives each mark the case of its letter."""
+    for word in data.HOMOGRAPHS:
+        forms = [word] + [v for (base, _), v in bifonia._DIACRITIZED.items() if base == word]
+        for v in dict.fromkeys(c for f in forms for c in case_variants(f)):
+            for frame in CASE_FRAMES:
                 yield frame.format(w=v)
 
 
@@ -761,11 +786,14 @@ def main():
         rows = [json.loads(line) for line in
                 pathlib.Path(args.test_sentences).read_text(encoding="utf-8").splitlines() if line.strip()]
         corpora["test_sentences"] = [r["sentence"] for r in rows] + [r["sentence"].lower() for r in rows]
+        corpora["test_sentences_case"] = [r["sentence"].upper() for r in rows] + \
+            [r["sentence"].swapcase() for r in rows]
     if args.hf_test:
         rows = [json.loads(line) for line in
                 pathlib.Path(args.hf_test).read_text(encoding="utf-8").splitlines() if line.strip()]
         corpora["hf_test"] = [r["sentence"] for r in rows] + [r["diacritized_sentence"] for r in rows]
     corpora["frames"] = list(frame_sentences())
+    corpora["case"] = list(case_sentences())
     corpora["voc_cues"] = list(voc_sentences())
     corpora["fuzz"] = list(fuzz_sentences(args.fuzz, seed=20261102))
     corpora["extras"] = list(extra_sentences())
