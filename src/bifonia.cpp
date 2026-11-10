@@ -259,7 +259,7 @@ std::string add_extra_diacritics(const std::string& sentence, const std::optiona
     }
     if (replacements.empty()) return detail::to_utf8(detail::from_utf8(sentence));
 
-    // Walk the \w+ runs of the original sentence, keeping each token's case.
+    // Walk the \w+ runs of the original sentence, keeping the case of each letter.
     const U32 text = detail::from_utf8(sentence);
     U32 out;
     size_t pos = 0, idx = 0, i = 0;
@@ -275,9 +275,13 @@ std::string add_extra_diacritics(const std::string& sentence, const std::optiona
         if (it == replacements.end()) {
             out += text.substr(i, j - i);
         } else {
-            U32 diac = detail::from_utf8(it->second);
-            if (detail::is_upper(text[i])) diac = detail::py_upper(diac.substr(0, 1)) + diac.substr(1);
-            out += diac;
+            // Each mark takes the case of its letter. Like Python's zip, the
+            // shorter of the token and its form sets the length.
+            const U32 diac = detail::from_utf8(it->second);
+            for (size_t k = 0; k < diac.size() && i + k < j; ++k) {
+                const U32 mark(1, diac[k]);
+                out += detail::is_upper(text[i + k]) ? detail::py_upper(mark) : mark;
+            }
         }
         pos = j;
         ++idx;

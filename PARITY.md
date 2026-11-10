@@ -74,7 +74,7 @@ The table lists each public name whose behaviour differs between bifonia
 
 | Python | Difference |
 | --- | --- |
-| `add_extra_diacritics` | Takes `lang`, the lect tag. For a lect with rows in `lect_overrides.csv`, the override form replaces the marked form of the word in every sense, and an empty form leaves the word unmarked. |
+| `add_extra_diacritics` | Takes `lang`, the lect tag. For a lect with rows in `lect_overrides.csv`, the override form replaces the marked form of the word in every sense, and an empty form leaves the word unmarked. Each letter of a marked word keeps its case: `ACORDO` gives `ACÔRDO` and `SeDe` gives `SéDe`. In 0.2.0a4 only the first letter keeps its case (`Acôrdo`). |
 | `lect_overrides`, `data.lect_overrides`, `data.LECT_OVERRIDES` | Added. The rows are for `pt-BR` and `pt-UY`. |
 | `tokenize` | Lowercases each token after the split. A code point whose lowercase is two code points (`İ`) no longer splits a token, so the tokens align with `proper_flags`. |
 | `proper_flags` | Reads the tokens `n.` and `º` as `nº`. The next token `no` or `n.º` no longer marks the first token. |
@@ -84,7 +84,7 @@ The table lists each public name whose behaviour differs between bifonia
 | `infopedia.ipa` | `pos` is a UD tag. A reading with that tag alone wins over a reading whose `|`-joined tags include it. |
 | `data.POS_SENSES`, `data.SENSE_POSES`, `data.VERBS_IPA`, `infopedia.load` | The verb molhar (`eu molho`) has the open vowel of the `bundle` sense, not the closed vowel of `sauce`. |
 | `vocab.voc` | 13 word lists added for `molho`. |
-| `version.VERSION_*` | 0.3.7a1. |
+| `version.VERSION_*` | 0.3.9a1. |
 
 ## The sense models
 
@@ -190,14 +190,16 @@ null where the result equals the default.
 | Corpus | Inputs | Detail kept |
 | --- | ---: | --- |
 | test_sentences | 3,868 | bifonia `tests/test_sentences.jsonl`, each sentence as given and lowercased, every field |
+| test_sentences_case | 3,868 | the same sentences in capitals and with the case of each letter swapped, CRC-32 of the homograph fields |
 | hf_test | 60,953 | bifonia `hf/test.jsonl`, `sentence` and `diacritized_sentence`, CRC-32 of the homograph fields |
 | frames | 38,430 | every homograph, capitalised, upper-case and each diacritized form, in 42 sentence frames, CRC-32 of the features |
+| case | 12,413 | every homograph and each diacritized form in capitals and in three mixed-case patterns, in 8 sentence frames, CRC-32 of the homograph fields |
 | voc_cues | 68,291 | every term of every `.voc` file in 16 frames around the homographs that read it, CRC-32 of the homograph fields |
-| fuzz | 19,322 | seeded random sentences of homographs, cue terms, punctuation, case changes and Unicode, CRC-32 of the homograph fields |
+| fuzz | 19,315 | seeded random sentences of homographs, cue terms, punctuation, case changes and Unicode, CRC-32 of the homograph fields |
 | extras | 372 | the locative contractions before `sede`, left neighbours of 3 code points and more bytes, and tokens that start with `İ`, every field |
 | molho_probes | 402 | `tests/fixtures/molho_probes.tsv`, sentences that test the reading of `molho`, every field |
 | molho_frames | 10,558 | each term of the 21 word lists that score `molho`, in 30 clause frames, CRC-32 of the features |
-| forced | 74,854 | the test sentences, frames, extras and `molho` sentences, and every seventh other sentence, with the model branch forced |
+| forced | 77,179 | the test sentences, frames, extras and `molho` sentences, and every seventh other sentence, with the model branch forced |
 
 A CRC-32 field is the checksum of the same JSON text. The C++ test computes the
 same checksum. The file `calls.jsonl.gz` holds 79,262 direct calls:

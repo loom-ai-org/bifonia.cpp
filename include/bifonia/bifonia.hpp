@@ -21,7 +21,7 @@
 
 namespace bifonia {
 
-inline constexpr const char* kPythonReference = "bifonia 0.3.7a1";
+inline constexpr const char* kPythonReference = "bifonia 0.3.9a1";
 
 using Words = std::vector<std::string>;
 using WordSet = std::unordered_set<std::string>;
@@ -125,6 +125,7 @@ std::vector<bool> proper_flags(const std::string& text);
 // the lect tag; an empty optional or an empty tag selects the default. A lect
 // with rows in lect_overrides.csv (pt-BR, pt-UY and their sub-lects) takes the
 // override form of a word in every sense, and an empty form leaves it unmarked.
+// Each letter keeps its case: "ACORDO" gives "ACÔRDO" and "SeDe" gives "SéDe".
 std::string add_extra_diacritics(const std::string& sentence, const std::optional<std::string>& lang = "pt-PT");
 // The data tables re-exported at the top level.
 const Dict<Dict<std::string>>& HOMOGRAPHS();
@@ -154,9 +155,9 @@ void set_sense_model(std::shared_ptr<const model::SenseModel> sense_model);
 namespace version {
 inline constexpr int VERSION_MAJOR = 0;
 inline constexpr int VERSION_MINOR = 3;
-inline constexpr int VERSION_BUILD = 7;
+inline constexpr int VERSION_BUILD = 9;
 inline constexpr int VERSION_ALPHA = 1;
-inline constexpr const char* VERSION_STR = "0.3.7a1";
+inline constexpr const char* VERSION_STR = "0.3.9a1";
 }  // namespace version
 
 // ── bifonia.vocab ────────────────────────────────────────────────────────────
