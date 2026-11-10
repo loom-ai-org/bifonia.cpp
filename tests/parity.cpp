@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <map>
@@ -718,13 +719,44 @@ int run_lect_nfd(const std::string& dir, const std::string& work_dir) {
     return (t.checked == t.expected && t.mismatches == 0) ? 0 : 1;
 }
 
+// Lect tables that the loader rejects. Each record holds the whole text of
+// lect_overrides.csv and the exception, with the message after the path of the
+// table. A rejected table leaves the tables unbuilt, so the next record loads
+// its own table.
+int run_lect_reject(const std::string& dir, const std::string& work_dir) {
+    namespace fs = std::filesystem;
+    const fs::path data = fs::path(work_dir) / "lect_reject_data";
+    fs::remove_all(data);
+    fs::copy(bf::data_dir(), data, fs::copy_options::recursive);
+    bf::set_data_dir(data.string());
+    const std::string path = (data / "lect_overrides.csv").string();
+    const Tally t = run(dir + "/lect_reject.jsonl.gz", [&](const std::string& line) {
+        const std::string table = json_line::parse(line)[1].str;
+        std::ofstream(path, std::ios::binary) << table;
+        std::string error;
+        try {
+            bf::data::lect_overrides(std::string("pt-BR"));
+            error = "\"loaded\"";
+        } catch (const bf::ValueError& e) {
+            const std::string msg = e.what();
+            const bool at_path = msg.compare(0, path.size(), path) == 0;
+            error = "{\"err\":\"ValueError\",\"msg\":" + J(at_path ? msg.substr(path.size()) : msg) + "}";
+        }
+        return "[\"lect_reject\"," + J(table) + "," + error + "]";
+    });
+    fs::remove_all(data);
+    return (t.checked == t.expected && t.mismatches == 0) ? 0 : 1;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     if (argc == 4 && std::string(argv[1]) == "--lect-nfd") return run_lect_nfd(argv[2], argv[3]);
+    if (argc == 4 && std::string(argv[1]) == "--lect-reject") return run_lect_reject(argv[2], argv[3]);
     if (argc != 2) {
         std::cerr << "usage: bifonia_parity <goldens dir>\n"
-                     "       bifonia_parity --lect-nfd <goldens dir> <work dir>\n";
+                     "       bifonia_parity --lect-nfd <goldens dir> <work dir>\n"
+                     "       bifonia_parity --lect-reject <goldens dir> <work dir>\n";
         return 2;
     }
     const std::string dir = argv[1];

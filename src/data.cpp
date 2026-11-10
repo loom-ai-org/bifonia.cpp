@@ -102,12 +102,27 @@ Tables build() {
 
     const std::string lect_path = detail::data_path("lect_overrides.csv");
     if (!detail::read_file(lect_path, text)) throw FileNotFoundError("cannot read " + lect_path);
-    for (const auto& row : detail::read_csv(text)) {
-        const std::string& lang = column(row, "lang");
-        const std::string& word = column(row, "word");
+    std::vector<long> lines;
+    const auto rows = detail::read_csv(text, &lines);
+    for (size_t r = 0; r < rows.size(); ++r) {
         // Read in NFC: add_extra_diacritics gives each code point of the form
-        // the case of the letter at the same position in the word.
-        t.LECT_OVERRIDES[lang][word] = detail::to_utf8(detail::nfc(detail::from_utf8(column(row, "form"))));
+        // the case of the letter at the same position in the word. So each code
+        // point of the form must be one letter of the word: a form that is not
+        // as long as its word, or that keeps a combining mark, would lose letters.
+        const std::string& word = column(rows[r], "word");
+        const detail::U32 form = detail::nfc(detail::from_utf8(column(rows[r], "form")));
+        const std::string form_utf8 = detail::to_utf8(form);
+        const std::string where = lect_path + ", line " + std::to_string(lines[r]) + ": the form " +
+                                  detail::str_repr(form_utf8) + " of " + detail::str_repr(word);
+        const size_t word_len = detail::cp_len(word);
+        if (!form.empty() && form.size() != word_len) {
+            throw ValueError(where + " has " + std::to_string(form.size()) + " code points in NFC, but the word has " +
+                             std::to_string(word_len));
+        }
+        if (std::any_of(form.begin(), form.end(), [](char32_t c) { return detail::combining(c) != 0; })) {
+            throw ValueError(where + " keeps a combining mark in NFC");
+        }
+        t.LECT_OVERRIDES[column(rows[r], "lang")][word] = form_utf8;
     }
     return t;
 }

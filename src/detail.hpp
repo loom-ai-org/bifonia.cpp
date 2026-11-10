@@ -28,6 +28,7 @@ bool is_digit(char32_t c);   // str.isdigit() on one code point
 bool is_alpha(char32_t c);   // str.isalpha() on one code point
 bool is_mn(char32_t c);      // unicodedata.category(c) == "Mn"
 bool is_printable(char32_t c);  // str.isprintable() on one code point
+int combining(char32_t c);   // unicodedata.combining(c)
 U32 nfd(const U32& text);    // unicodedata.normalize("NFD", text)
 U32 nfc(const U32& text);    // unicodedata.normalize("NFC", text)
 bool py_isupper(const U32& text);  // str.isupper()
@@ -61,8 +62,13 @@ bool read_file(const std::string& path, std::string& out);
 
 // Python's csv.DictReader over a file opened in text mode: universal newlines,
 // the default dialect, empty rows skipped. Each row holds every column of the
-// header; missing values are empty and extra values are dropped.
-std::vector<std::vector<std::pair<std::string, std::string>>> read_csv(const std::string& text);
+// header; missing values are empty and extra values are dropped. line_nums,
+// when given, receives the reader's line_num after each row.
+std::vector<std::vector<std::pair<std::string, std::string>>> read_csv(const std::string& text,
+                                                                       std::vector<long>* line_nums = nullptr);
+
+// Python's repr() of a str.
+std::string str_repr(const std::string& s);
 
 // Python's `word in set`, with ill-formed UTF-8 read as Python decodes it.
 bool contains(const WordSet& set, const std::string& word);

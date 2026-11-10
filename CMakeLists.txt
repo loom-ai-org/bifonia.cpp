@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(bifonia VERSION 0.3.12 LANGUAGES CXX)
+project(bifonia VERSION 0.3.14 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -100,6 +100,9 @@ if(BIFONIA_BUILD_TESTS)
     add_test(NAME parity_lect_nfd
              COMMAND bifonia_parity --lect-nfd ${CMAKE_CURRENT_SOURCE_DIR}/tests/goldens ${CMAKE_CURRENT_BINARY_DIR})
     set_tests_properties(parity_lect_nfd PROPERTIES ENVIRONMENT "BIFONIA_DATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/data")
+    add_test(NAME parity_lect_reject
+             COMMAND bifonia_parity --lect-reject ${CMAKE_CURRENT_SOURCE_DIR}/tests/goldens ${CMAKE_CURRENT_BINARY_DIR})
+    set_tests_properties(parity_lect_reject PROPERTIES ENVIRONMENT "BIFONIA_DATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/data")
 
     add_executable(bifonia_examples tests/examples.cpp)
     target_link_libraries(bifonia_examples PRIVATE bifonia)

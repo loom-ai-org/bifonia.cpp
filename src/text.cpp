@@ -57,6 +57,36 @@ int cue_score(const Words& words, long idx, const WordSet& cues, long near) {
 }  // namespace bifonia::text
 
 namespace bifonia::detail {
+// Python's repr() of a str: single quotes unless the text holds a single quote
+// and no double quote; control and non-printable code points as escapes.
+std::string str_repr(const std::string& s) {
+    const char q = (s.find('\'') != std::string::npos && s.find('"') == std::string::npos) ? '"' : '\'';
+    std::string out(1, q);
+    char buf[16];
+    for (char32_t c : from_utf8(s)) {
+        if (c == '\\' || c == static_cast<char32_t>(q)) {
+            out += '\\';
+            out += static_cast<char>(c);
+        } else if (c == '\t') {
+            out += "\\t";
+        } else if (c == '\n') {
+            out += "\\n";
+        } else if (c == '\r') {
+            out += "\\r";
+        } else if (c < 0x20 || c == 0x7F) {
+            std::snprintf(buf, sizeof buf, "\\x%02x", static_cast<unsigned>(c));
+            out += buf;
+        } else if (c < 0x7F || is_printable(c)) {
+            out += to_utf8(std::u32string(1, c));
+        } else {
+            const char* format = c <= 0xFF ? "\\x%02x" : c <= 0xFFFF ? "\\u%04x" : "\\U%08x";
+            std::snprintf(buf, sizeof buf, format, static_cast<unsigned>(c));
+            out += buf;
+        }
+    }
+    return out + q;
+}
+
 // The folded copy of a cached voc, built once (Python's lru_cache on folded).
 const WordSet& folded_voc(const std::string& name) {
     static std::mutex mutex;
@@ -103,37 +133,6 @@ const Dict<std::pair<std::string, std::string>>& FEATURE_CUES() {
     return cues;
 }
 
-namespace {
-// Python's repr() of a str: single quotes unless the text holds a single quote
-// and no double quote; control and non-printable code points as escapes.
-std::string str_repr(const std::string& s) {
-    const char q = (s.find('\'') != std::string::npos && s.find('"') == std::string::npos) ? '"' : '\'';
-    std::string out(1, q);
-    char buf[16];
-    for (char32_t c : detail::from_utf8(s)) {
-        if (c == '\\' || c == static_cast<char32_t>(q)) {
-            out += '\\';
-            out += static_cast<char>(c);
-        } else if (c == '\t') {
-            out += "\\t";
-        } else if (c == '\n') {
-            out += "\\n";
-        } else if (c == '\r') {
-            out += "\\r";
-        } else if (c < 0x20 || c == 0x7F) {
-            std::snprintf(buf, sizeof buf, "\\x%02x", static_cast<unsigned>(c));
-            out += buf;
-        } else if (c < 0x7F || detail::is_printable(c)) {
-            out += detail::to_utf8(std::u32string(1, c));
-        } else {
-            const char* format = c <= 0xFF ? "\\x%02x" : c <= 0xFFFF ? "\\u%04x" : "\\U%08x";
-            std::snprintf(buf, sizeof buf, format, static_cast<unsigned>(c));
-            out += buf;
-        }
-    }
-    return out + q;
-}
-}  // namespace
 
 bool operator==(const Cue& a, const Cue& b) {
     return a.sense == b.sense && a.voc == b.voc && a.requires_prev == b.requires_prev;
@@ -144,15 +143,15 @@ bool operator==(const CueRule& a, const CueRule& b) {
 }
 
 std::string repr(const Cue& cue) {
-    return "Cue(sense=" + str_repr(cue.sense) + ", voc=" + str_repr(cue.voc) +
-           ", requires_prev=" + (cue.requires_prev ? str_repr(*cue.requires_prev) : "None") + ")";
+    return "Cue(sense=" + detail::str_repr(cue.sense) + ", voc=" + detail::str_repr(cue.voc) +
+           ", requires_prev=" + (cue.requires_prev ? detail::str_repr(*cue.requires_prev) : "None") + ")";
 }
 
 std::string repr(const CueRule& rule) {
     std::string cues = "(";
     for (size_t i = 0; i < rule.cues.size(); ++i) cues += (i ? ", " : "") + repr(rule.cues[i]);
     if (rule.cues.size() == 1) cues += ",";
-    return "CueRule(default=" + str_repr(rule.default_sense) + ", cues=" + cues + "))";
+    return "CueRule(default=" + detail::str_repr(rule.default_sense) + ", cues=" + cues + "))";
 }
 
 }  // namespace bifonia::cues

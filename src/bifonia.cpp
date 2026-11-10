@@ -17,7 +17,12 @@ constexpr std::string_view kEdgePunct = ".,;:!?";
 
 bool is_edge_punct(char32_t c) { return c < 0x80 && kEdgePunct.find(static_cast<char>(c)) != std::string_view::npos; }
 
-// re.findall(r"-?\w+[.,;:!?]*", text)
+// _TOKEN = r"(-?\w+)(?:[»”’›\"')\]]*([.,;:!?…]+))?": a word and the punctuation
+// after it, which can follow closing quotes and brackets; the closers are not kept.
+bool is_closer(char32_t c) { return std::u32string_view(U"»”’›\"')]").find(c) != std::u32string_view::npos; }
+bool is_token_punct(char32_t c) { return is_edge_punct(c) || c == U'…'; }
+
+// _tokens: the matches of _TOKEN as word plus punctuation, with "…" written "...".
 std::vector<U32> find_tokens(const U32& text) {
     std::vector<U32> out;
     const size_t n = text.size();
@@ -33,8 +38,20 @@ std::vector<U32> find_tokens(const U32& text) {
             continue;
         }
         while (j < n && detail::is_word(text[j])) ++j;
-        while (j < n && is_edge_punct(text[j])) ++j;
-        out.push_back(text.substr(i, j - i));
+        U32 token = text.substr(i, j - i);
+        size_t k = j;
+        while (k < n && is_closer(text[k])) ++k;
+        if (k < n && is_token_punct(text[k])) {
+            for (; k < n && is_token_punct(text[k]); ++k) {
+                if (text[k] == U'…') {
+                    token += U"...";
+                } else {
+                    token.push_back(text[k]);
+                }
+            }
+            j = k;
+        }
+        out.push_back(std::move(token));
         i = j;
     }
     return out;
@@ -208,41 +225,49 @@ std::string guess_pos(const Words& words, long idx, bool proper) {
 
 std::vector<bool> proper_flags(const std::string& text) {
     const auto toks = find_tokens(detail::from_utf8(text));
-    std::vector<bool> flags(toks.size(), false);
+    const size_t n = toks.size();
     auto lstrip_dash = [](const U32& t) {
         size_t b = 0;
         while (b < t.size() && t[b] == '-') ++b;
         return t.substr(b);
     };
-    for (size_t i = 1; i < toks.size(); ++i) {
-        const U32 core = lstrip_dash(toks[i]);
-        const U32& prev = toks[i - 1];
-        const bool boundary =
-            !prev.empty() && std::u32string_view(U".!?:…").find(prev.back()) != std::u32string_view::npos;
-        // A word in capitals is not a name signal on its own.
-        if (!core.empty() && detail::is_upper(core[0]) && !detail::py_isupper(core) && !boundary) flags[i] = true;
-    }
-    // A first word that ends its sentence starts no phrase. A colon does not end
-    // a sentence: "Governo: PS aprova orçamento." is a label.
-    if (toks.size() > 1 && std::u32string_view(U".!?").find(toks[0].back()) == std::u32string_view::npos) {
-        auto strip_punct = [](const U32& t) {
-            size_t b = 0, e = t.size();
-            while (b < e && is_edge_punct(t[b])) ++b;
-            while (e > b && is_edge_punct(t[e - 1])) --e;
-            return t.substr(b, e - b);
-        };
-        const U32 first = lstrip_dash(toks[0]);
-        const bool title_first = !first.empty() && detail::is_upper(first[0]) && !detail::py_isupper(first);
-        U32 nxt = strip_punct(lstrip_dash(toks[1]));
+    auto strip_punct = [](const U32& t) {
+        size_t b = 0, e = t.size();
+        while (b < e && is_edge_punct(t[b])) ++b;
+        while (e > b && is_edge_punct(t[e - 1])) --e;
+        return t.substr(b, e - b);
+    };
+    // A sentence ends at ".", "!", "?" or "..." ("…"). A colon does not end the
+    // sentence of the word before it, but the word after a colon starts a clause.
+    std::vector<bool> ends(n), starts(n + 1), numero(n);
+    starts[0] = true;
+    for (size_t i = 0; i < n; ++i) {
+        ends[i] = std::u32string_view(U".!?").find(toks[i].back()) != std::u32string_view::npos;
+        starts[i + 1] = ends[i] || toks[i].back() == U':';
         // The split turns "n.º" into "n." and "º"; read the pair as "nº".
-        if (detail::py_lower(toks[1]) == U"n." && toks.size() > 2 && strip_punct(toks[2]) == U"º") nxt = U"nº";
-        const std::string lowered = detail::to_utf8(detail::py_lower(nxt));
+        numero[i] = detail::py_lower(toks[i]) == U"n." && strip_punct(i + 1 < n ? toks[i + 1] : U32()) == U"º";
+    }
+    std::vector<bool> flags(n, false);
+    for (size_t i = 0; i < n; ++i) {
+        const U32 core = lstrip_dash(toks[i]);
+        const bool title = !core.empty() && detail::is_upper(core[0]) && !detail::py_isupper(core);
+        if (!starts[i]) {
+            // A word in capitals is not a name signal on its own.
+            flags[i] = title;
+            continue;
+        }
+        // The first word of a sentence is always capitalised, so it is flagged
+        // only when the next token continues a name or is nº. A first word that
+        // ends its sentence starts no phrase, and a lower-case word after the
+        // first token starts no sentence.
+        const bool upper_first = !core.empty() && detail::is_upper(core[0]);
+        if (i + 1 == n || ends[i] || (i > 0 && !upper_first)) continue;
+        const U32 nxt = numero[i + 1] ? U32(U"nº") : strip_punct(lstrip_dash(toks[i + 1]));
+        const U32 lowered = detail::py_lower(nxt);
         // An all-caps next token (an acronym, a roman numeral, an initial) counts
         // only after a first word in title case.
-        const bool caps_next = !nxt.empty() && detail::is_upper(nxt[0]) && (title_first || !detail::py_isupper(nxt));
-        if (caps_next || (!nxt.empty() && detail::is_digit(nxt[0])) || lowered == "nº" || lowered == "nr") {
-            flags[0] = true;
-        }
+        const bool caps_next = !nxt.empty() && detail::is_upper(nxt[0]) && (title || !detail::py_isupper(nxt));
+        flags[i] = caps_next || lowered == U"nº" || lowered == U"nr";
     }
     return flags;
 }
