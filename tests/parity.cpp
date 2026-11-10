@@ -5,6 +5,7 @@
 #include <charconv>
 #include <cstdlib>
 #include <cmath>
+#include <filesystem>
 #include <functional>
 #include <iostream>
 #include <map>
@@ -702,20 +703,41 @@ int detail_of(const Value& line) {
     return line[5][0][12].kind == Value::Array ? 2 : 1;
 }
 
+// The lect calls with lect_overrides.csv replaced by lect_nfd.csv, whose forms
+// are not in NFC. The tables are read once, from one directory, so the data
+// directory is copied under work_dir with that one file replaced.
+int run_lect_nfd(const std::string& dir, const std::string& work_dir) {
+    namespace fs = std::filesystem;
+    const fs::path data = fs::path(work_dir) / "lect_nfd_data";
+    fs::remove_all(data);
+    fs::copy(bf::data_dir(), data, fs::copy_options::recursive);
+    fs::copy_file(dir + "/lect_nfd.csv", data / "lect_overrides.csv", fs::copy_options::overwrite_existing);
+    bf::set_data_dir(data.string());
+    const Tally t = run(dir + "/lect_nfd.jsonl.gz", [](const std::string& line) { return call_record(json_line::parse(line)); });
+    fs::remove_all(data);
+    return (t.checked == t.expected && t.mismatches == 0) ? 0 : 1;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
+    if (argc == 4 && std::string(argv[1]) == "--lect-nfd") return run_lect_nfd(argv[2], argv[3]);
     if (argc != 2) {
-        std::cerr << "usage: bifonia_parity <goldens dir>\n";
+        std::cerr << "usage: bifonia_parity <goldens dir>\n"
+                     "       bifonia_parity --lect-nfd <goldens dir> <work dir>\n";
         return 2;
     }
     const std::string dir = argv[1];
     fixtures_dir = dir + "/../fixtures";
     Tally total;
+    bool counts_match = true;
     auto add = [&](const Tally& t) {
         total.expected += t.expected;
         total.checked += t.checked;
         total.mismatches += t.mismatches;
+        // Each file must hold the count its header states, so a short file
+        // cannot hide behind a long one.
+        counts_match = counts_match && t.checked == t.expected;
     };
     add(run(dir + "/sentences.jsonl.gz", [](const std::string& line) {
         const Value v = json_line::parse(line);
@@ -737,5 +759,5 @@ int main(int argc, char** argv) {
 
     std::cout << "goldens: " << total.expected << " in, " << total.checked << " checked, " << total.mismatches
               << " mismatches\n";
-    return (total.checked == total.expected && total.mismatches == 0) ? 0 : 1;
+    return (counts_match && total.mismatches == 0) ? 0 : 1;
 }

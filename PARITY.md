@@ -1,9 +1,10 @@
 # Parity with the Python package
 
 This library is held at byte parity with the Python `bifonia` release named in
-`kPythonReference` (`include/bifonia/bifonia.hpp`). The test `parity` checks that
-claim. It recomputes every line of the three files in `tests/goldens/` and
-compares the bytes.
+`kPythonReference` (`include/bifonia/bifonia.hpp`). The tests `parity` and
+`parity_lect_nfd` check that claim. They recompute every line of the golden
+files in `tests/goldens/` and compare the bytes. Each file must also hold the
+number of lines its header states.
 
 ## Public surface
 
@@ -75,16 +76,16 @@ The table lists each public name whose behaviour differs between bifonia
 | Python | Difference |
 | --- | --- |
 | `add_extra_diacritics` | Takes `lang`, the lect tag. For a lect with rows in `lect_overrides.csv`, the override form replaces the marked form of the word in every sense, and an empty form leaves the word unmarked. Each letter of a marked word keeps its case: `ACORDO` gives `ACÔRDO` and `SeDe` gives `SéDe`. In 0.2.0a4 only the first letter keeps its case (`Acôrdo`). |
-| `lect_overrides`, `data.lect_overrides`, `data.LECT_OVERRIDES` | Added. The rows are for `pt-BR` and `pt-UY`. |
+| `lect_overrides`, `data.lect_overrides`, `data.LECT_OVERRIDES` | Added. The rows are for `pt-BR` and `pt-UY`. Each form is read in NFC, so a form in NFD has the length of its word. |
 | `tokenize` | Lowercases each token after the split. A code point whose lowercase is two code points (`İ`) no longer splits a token, so the tokens align with `proper_flags`. |
-| `proper_flags` | Reads the tokens `n.` and `º` as `nº`. The next token `no` or `n.º` no longer marks the first token. |
+| `proper_flags` | Reads the tokens `n.` and `º` as `nº`. The next token `no` or `n.º` no longer marks the first token. A word in capitals is not flagged in mid-sentence. An all-caps next token (an acronym, a roman numeral, an initial) marks the first word only when the first word is in title case: `Governo PS` flags `Governo`, and `GOVERNO PS` flags no word. A first word that ends in `.`, `!` or `?` is never flagged (`Jogo. Depois descanso.`). A colon does not stop the rule (`Governo: PS aprova orçamento.` flags `Governo`). |
 | `guess_sense`, `guess_pos` | A diacritized form that marks several senses (`chôco`: addled and cuttlefish) narrows the choice, and the context picks among those senses. |
 | `scoring.score_noun` | Scores `molho` as a noun after an interrogative or a verb of lack or surplus, at the start of a clause with no direct object, and before `de` and a noun. |
 | `scoring.score_adp` | A number is a string of decimal digits with an optional leading `-` (`str.isdecimal`), or a number word. It was any string that `float()` accepts. |
 | `infopedia.ipa` | `pos` is a UD tag. A reading with that tag alone wins over a reading whose `|`-joined tags include it. |
 | `data.POS_SENSES`, `data.SENSE_POSES`, `data.VERBS_IPA`, `infopedia.load` | The verb molhar (`eu molho`) has the open vowel of the `bundle` sense, not the closed vowel of `sauce`. |
 | `vocab.voc` | 13 word lists added for `molho`. |
-| `version.VERSION_*` | 0.3.9a1. |
+| `version.VERSION_*` | 0.3.12a1. |
 
 ## The sense models
 
@@ -164,8 +165,10 @@ subpart. The tables in `src/unicode_tables.inc` come from Python itself
 (`tools/gen_unicode_tables.py`) and record the Python and Unicode versions. They
 give `str.lower` (with the Greek final sigma), `str.upper`, `str.isspace`, the
 `\w` class of `re`, `str.isupper`, `str.isdigit`, `str.isalpha` and
-`str.isprintable` on one code point, the decimal digits of `str.isdecimal`, the
-NFD decompositions with the canonical combining classes, and category Mn. Each
+`str.isprintable` on one code point, the lower-case and title-case code points
+that make `str.isupper` false on a longer string, the decimal digits of
+`str.isdecimal`, the NFD decompositions with the canonical combining classes, the
+primary composites of NFC, and category Mn. Each
 regular expression is written out as code.
 
 A set lookup compares a string with ill-formed bytes as the string Python
@@ -199,7 +202,8 @@ null where the result equals the default.
 | extras | 372 | the locative contractions before `sede`, left neighbours of 3 code points and more bytes, and tokens that start with `İ`, every field |
 | molho_probes | 402 | `tests/fixtures/molho_probes.tsv`, sentences that test the reading of `molho`, every field |
 | molho_frames | 10,558 | each term of the 21 word lists that score `molho`, in 30 clause frames, CRC-32 of the features |
-| forced | 77,179 | the test sentences, frames, extras and `molho` sentences, and every seventh other sentence, with the model branch forced |
+| proper_caps | 5,239 | every homograph in title case, capitals, lower case, swapped case and mixed case, in 42 frames next to acronyms, roman numerals, initials and words in capitals, every field |
+| forced | 82,418 | the test sentences, frames, extras, `molho` and proper_caps sentences, and every seventh other sentence, with the model branch forced |
 
 A CRC-32 field is the checksum of the same JSON text. The C++ test computes the
 same checksum. The file `calls.jsonl.gz` holds 79,262 direct calls:
@@ -223,6 +227,17 @@ same checksum. The file `calls.jsonl.gz` holds 79,262 direct calls:
   ties, NaN scores, escapes, and text that Python's `json` rejects
 - the `.voc` files in `tests/fixtures/data`: line breaks, comments and ill-formed
   UTF-8.
+
+The test `parity_lect_nfd` copies the data directory, replaces
+`lect_overrides.csv` with `tests/goldens/lect_nfd.csv`, and checks the 182 calls
+in `lect_nfd.jsonl.gz`. The file holds 3,104 rows whose forms are not in NFC: the
+shipped rows in NFD, test lects whose marks NFC reorders or leaves uncomposed,
+and one form for each string that NFC changes (each primary composite in NFD,
+each code point that NFC replaces, Hangul jamo and 1,000 seeded runs of
+combining marks). The calls are the table, `lect_overrides` for 10 tags and
+`add_extra_diacritics` on 19 sentences for 9 tags. `tools/dump_goldens.py` writes
+the file, then reads it through a copy of the Python package in a child
+interpreter, because Python reads the table at import.
 
 To regenerate, install the reference release in a fresh virtual environment, then
 run:

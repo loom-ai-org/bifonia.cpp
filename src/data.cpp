@@ -105,7 +105,9 @@ Tables build() {
     for (const auto& row : detail::read_csv(text)) {
         const std::string& lang = column(row, "lang");
         const std::string& word = column(row, "word");
-        t.LECT_OVERRIDES[lang][word] = column(row, "form");
+        // Read in NFC: add_extra_diacritics gives each code point of the form
+        // the case of the letter at the same position in the word.
+        t.LECT_OVERRIDES[lang][word] = detail::to_utf8(detail::nfc(detail::from_utf8(column(row, "form"))));
     }
     return t;
 }

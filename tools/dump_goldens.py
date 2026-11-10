@@ -16,14 +16,17 @@ Files written to --out-dir:
   calls.jsonl.gz      direct calls: tables, vocabularies, text helpers,
                       infopedia, numeric probes, index probes, Unicode probes,
                       lect tags
+  lect_nfd.csv        a lect_overrides.csv whose forms are not in NFC
+  lect_nfd.jsonl.gz   lect calls with lect_nfd.csv in place of the shipped table
 
 Sentence corpora:
   --test-sentences  bifonia tests/test_sentences.jsonl (each sentence as given,
                     lowercased, in capitals and with its case swapped)
   --hf-test         bifonia hf/test.jsonl (sentence and diacritized_sentence)
   generated         every homograph in sentence frames, every homograph and
-                    diacritized form in mixed case, every .voc term in
-                    context, the "molho" clause frames, and a seeded fuzz set
+                    diacritized form in mixed case, every homograph next to
+                    words in capitals, every .voc term in context, the "molho"
+                    clause frames, and a seeded fuzz set
   fixtures          tests/fixtures/molho_probes.tsv (the reading of "molho")
 
 Usage:
@@ -33,13 +36,17 @@ Usage:
 """
 import argparse
 import copy
+import csv
 import gzip
 import importlib.metadata
 import io
 import json
 import pathlib
 import random
+import shutil
+import subprocess
 import sys
+import tempfile
 import unicodedata
 import zlib
 
@@ -223,6 +230,34 @@ def case_sentences():
         for v in dict.fromkeys(c for f in forms for c in case_variants(f)):
             for frame in CASE_FRAMES:
                 yield frame.format(w=v)
+
+
+# Frames for proper_flags: a word in capitals is not a name signal on its own,
+# but after a first word in title case an acronym, a roman numeral or an
+# initial still marks that first word as a name. T is the homograph in title
+# case, U in capitals, L in lower case, S with its case swapped and M with
+# every other letter in capitals.
+PROPER_FRAMES = (
+    "{T} PS aprova o orçamento", "{T} UE-Mercosul entra em vigor", "{T} IV", "{T} I da final",
+    "{T} D. Fernando", "{T} S. Mamede", "{T} COVID-19 no registo", "{T} SEMPRE cedo",
+    "{T} Corá fica longe", "{T}, PS aprova", "{T}. PS aprova", "-{T} PS aprova", "{T} Nº 5",
+    "{T}. Depois descanso.", "{T}! PS aprova", "{T}? PS aprova", "{T}: PS aprova orçamento.",
+    "{T}; PS aprova", "{T}… PS aprova", "{T}.. PS aprova", "{T}.PS aprova", "{T}. 13", "{T}! nº 5",
+    "{U}. PS APROVA",
+    "{T} ǅemal", "{T} Ǆ", "{T} ß", "{U} PS APROVA O ORÇAMENTO", "{U} IV", "{U} Corá",
+    "{L} PS aprova", "{S} PS aprova", "{M} PS aprova", "eu {U} cedo", "Eu {U} todos os dias",
+    "o {U} do vizinho", "Vi o filme {U} PERIGOSO ontem", "A EMPRESA {U} CONSTRÓI CASAS",
+    "ELE {U} O CARRO", "eu {T} cedo", "o {M} do vizinho", "Ontem, {U} a porta",
+)
+
+
+def proper_sentences():
+    for word in data.HOMOGRAPHS:
+        mixed = "".join(c.upper() if k % 2 == 0 else c for k, c in enumerate(word))
+        forms = {"T": word.capitalize(), "U": word.upper(), "L": word,
+                 "S": word.capitalize().swapcase(), "M": mixed}
+        for frame in PROPER_FRAMES:
+            yield frame.format(**forms)
 
 
 def voc_sentences():
@@ -762,6 +797,93 @@ def lect_calls():
         prev = cur
 
 
+# Override forms that are not in NFC. LECT_NFD_ROWS adds rows for test lects
+# to the shipped rows, which are put in NFD. "x-nfc" holds one form per string
+# that NFC changes: each primary composite in NFD, each code point that NFC
+# replaces, Hangul jamo and seeded runs of combining marks.
+LECT_NFD_ROWS = (
+    ("pt-AO", "para", "pa\u0301ra"), ("pt-AO", "sede", "se\u0302de"), ("pt-AO", "jogo", "jo\u0302go"),
+    ("pt-AO", "acordo", "aco\u0302rdo"), ("pt-AO", "soma", "so\u0302ma"), ("pt-AO", "molho", "mo\u0301lho"),
+    ("pt-AO", "governo", "gove\u0302rno"), ("pt-AO", "pelo", "pe\u0302lo"),
+    # marks that NFC reorders, then composes in one or two steps
+    ("pt-MZ", "soma", "so\u0323\u0302ma"), ("pt-MZ", "jogo", "jo\u0302\u0323go"),
+    ("pt-MZ", "sede", "se\u0302\u0301de"), ("pt-MZ", "para", "pa\u0301\u0323ra"),
+    # forms that stay longer than the word after NFC
+    ("pt-CV", "soma", "so\u0301\u0302ma"), ("pt-CV", "jogo", "j\u0331ogo"),
+    ("pt-CV", "acordo", "aco\u0344rdo"), ("pt-CV", "para", "\u212bpara"), ("pt-CV", "sede", "se\u0340de"),
+)
+
+LECT_NFD_TAGS = ("pt-BR", "pt-br-x-rj", "pt-UY", "pt-AO", "pt_ao", "pt-MZ", "pt-CV", "pt-PT", None)
+
+LECT_NFD_SENTENCES = (
+    "A soma dá dez.", "SOMA", "Soma tudo.", "sOmA", "O abono de família chegou.",
+    "O autocarro para em frente ao hospital.", "O AUTOCARRO PARA EM FRENTE AO HOSPITAL.",
+    "Tenho sede.", "TENHO SEDE", "A Sede do partido.", "Eu jogo à bola.", "O JOGO acabou.",
+    "Eu acordo cedo.", "ACORDO", "O molho de tomate.", "O GOVERNO caiu.", "Pelo caminho.",
+    "pela PELO pelo", "",
+)
+
+
+def lect_nfd_rows():
+    with open(pathlib.Path(data.__file__).parent / "data" / "lect_overrides.csv", encoding="utf-8") as fh:
+        rows = [(r["lang"], r["word"], unicodedata.normalize("NFD", r["form"])) for r in csv.DictReader(fh)]
+    rows += LECT_NFD_ROWS
+    strings = []
+    for cp in range(0x110000):
+        c = chr(cp)
+        if 0xD800 <= cp <= 0xDFFF or 0xAC00 <= cp <= 0xD7A3:
+            continue
+        if unicodedata.normalize("NFC", c) != c:
+            strings.append(c)
+        elif unicodedata.normalize("NFD", c) != c:
+            strings.append(unicodedata.normalize("NFD", c))
+    strings += ["\u1100\u1161", "\u1100\u1161\u11a8", "\u1100\u1161\u11a7", "\u1100\u1161\u11c3",
+                "\u1112\u1175\u11c2", "\u1113\u1161", "\u1100\u1176", "\uac00\u11a8", "\u1100\u0301\u1161",
+                "\u1100\u1161\u0301\u11a8", "\u0308\u0301", "o\u0308\u0301", "\u0f71\u0f72", "a\u0f71\u0f72"]
+    rng = random.Random(20261110)
+    marks = [chr(cp) for cp in range(0x300, 0x370)] + ["\u0323", "\u0331", "\u0f72", "\u05b4", "\u302a"]
+    bases = "aeiouAEIOUcCnNsSyYzZ\u03b1\u03c9\u0418\u0928\u3046"
+    for _ in range(1000):
+        strings.append(rng.choice(bases) + "".join(rng.choice(marks) for _ in range(rng.randint(1, 4))))
+    rows += [("x-nfc", f"w{k}", s) for k, s in enumerate(strings)]
+    return rows
+
+
+def write_lect_nfd_csv(path):
+    with open(path, "w", encoding="utf-8", newline="") as fh:
+        out = csv.writer(fh, lineterminator="\n")
+        out.writerow(("lang", "word", "form"))
+        out.writerows(lect_nfd_rows())
+
+
+def lect_nfd_records():
+    yield ["LECT_OVERRIDES", [[lang, list(rows.items())] for lang, rows in data.LECT_OVERRIDES.items()]]
+    for tag in LECT_NFD_TAGS + ("x-nfc",):
+        yield ["lect_overrides", tag, probe(bifonia.lect_overrides, tag), probe(data.lect_overrides, tag)]
+    for tag in LECT_NFD_TAGS:
+        for s in LECT_NFD_SENTENCES:
+            yield ["lect_diacritics", tag, s, probe(bifonia.add_extra_diacritics, s, tag)]
+
+
+def lect_nfd_calls(csv_path):
+    """lect_nfd_records with csv_path as the lect table.
+
+    The package reads the table at import, so a child interpreter imports a copy
+    of the package whose data/lect_overrides.csv is csv_path."""
+    with tempfile.TemporaryDirectory() as tmp:
+        package = pathlib.Path(bifonia.__file__).parent
+        shutil.copytree(package, pathlib.Path(tmp) / "bifonia",
+                        ignore=shutil.ignore_patterns("__pycache__", "corpus.jsonl"))
+        shutil.copyfile(csv_path, pathlib.Path(tmp) / "bifonia" / "data" / "lect_overrides.csv")
+        code = ("import sys; sys.path[:0] = sys.argv[1:3]; import bifonia, dump_goldens; "
+                "assert bifonia.__file__.startswith(sys.argv[1]); "
+                "sys.stdout.reconfigure(encoding='utf-8'); "
+                "[print(dump_goldens.dumps(r)) for r in dump_goldens.lect_nfd_records()]")
+        child = subprocess.run([sys.executable, "-I", "-B", "-c", code, tmp, str(pathlib.Path(__file__).parent)],
+                               capture_output=True, encoding="utf-8", check=True)
+    return child.stdout.splitlines()
+
+
 def write(path, lines, header):
     buffer = io.StringIO()
     header = dict(header, count=len(lines))
@@ -799,11 +921,13 @@ def main():
     corpora["extras"] = list(extra_sentences())
     corpora["molho_probes"] = list(molho_probe_sentences())
     corpora["molho_frames"] = list(molho_sentences())
+    corpora["proper_caps"] = list(proper_sentences())
 
     # Detail level per corpus: 2 keeps every field, 1 replaces the feature
     # list by its CRC-32, 0 replaces the whole homograph list by its CRC-32.
     # The C++ test computes the same CRC over the same bytes.
-    levels = {"test_sentences": 2, "frames": 1, "extras": 2, "molho_probes": 2, "molho_frames": 1}
+    levels = {"test_sentences": 2, "frames": 1, "extras": 2, "molho_probes": 2, "molho_frames": 1,
+              "proper_caps": 2}
     seen, inputs, detail = set(), [], {}
     for name, sentences in corpora.items():
         before = len(inputs)
@@ -833,6 +957,15 @@ def main():
         print(f"calls/{name}: {len(calls) - before}", file=sys.stderr)
     write(out / "calls.jsonl.gz", calls, header)
     print(f"calls: {len(calls)} in, {len(calls)} out", file=sys.stderr)
+
+    write_lect_nfd_csv(out / "lect_nfd.csv")
+    nfd_rows = len(lect_nfd_rows())
+    nfd_calls = lect_nfd_calls(out / "lect_nfd.csv")
+    expected = 1 + len(LECT_NFD_TAGS) + 1 + len(LECT_NFD_TAGS) * len(LECT_NFD_SENTENCES)
+    if len(nfd_calls) != expected:
+        raise SystemExit(f"lect_nfd: {expected} calls expected, {len(nfd_calls)} written")
+    write(out / "lect_nfd.jsonl.gz", nfd_calls, header)
+    print(f"lect_nfd: {nfd_rows} rows, {expected} in, {len(nfd_calls)} out", file=sys.stderr)
 
     # Route every word to the model, so the model branch of guess_sense decides.
     forced_inputs = [s for s in inputs if detail[s]] + [s for s in inputs if not detail[s]][::7]
