@@ -88,6 +88,12 @@ struct Lists {
     const WordSet& bundle_ambig = V("bundle_ambiguous");
     const WordSet& bundle_verbs = V("bundle_verbs");
     const WordSet& contracted_det = V("contracted_det");
+    const WordSet& fora_verb_prev = V("fora_verb_prev");
+    const WordSet& fora_adverb_prev = V("fora_adverb_prev");
+    const WordSet& fora_adverb_next = V("fora_adverb_next");
+    const WordSet& fora_bridge = V("fora_bridge_adverbs");
+    const WordSet& irregular_participles = V("irregular_participles");
+    const WordSet& participle_lookalikes = V("participle_lookalikes");
     const data::Tables& t = data::tables();
 };
 
@@ -329,6 +335,48 @@ int score_adp(const Words& words, long idx) {
     return score;
 }
 
+// A past participle: an irregular one ("escrito", "aceite") or an -ado/-ido
+// form ("decidido", "construída"), but not a noun such as "lado".
+bool is_participle(const std::string& word) {
+    const Lists& l = L();
+    if (contains(l.irregular_participles, word)) return true;
+    const std::string stem = ends_with(word, "s") ? word.substr(0, word.size() - 1) : word;
+    if (contains(l.participle_lookalikes, stem)) return false;
+    return ends_with_any(stem, {"ado", "ada", "ido", "ida", "ído", "ída"}) && detail::cp_len(stem) >= 4;
+}
+
+// "fora" is the pluperfect of ser or ir (closed fôra) only with a cue of the
+// verb; the adverb (open fóra) is the frequent reading.
+bool fora_is_verb(const Words& words, long idx) {
+    const Lists& l = L();
+    const data::Tables& t = l.t;
+    const std::string prev_word = prev(words, idx);
+    const std::string next_word = next(words, idx);
+    const long n = size(words);
+    if (detail::starts_with(next_word, "-") && contains(l.enclitics, next_word.substr(1))) return true;
+    if (contains(l.fora_adverb_prev, prev_word) || contains(l.fora_adverb_next, next_word)) return false;
+    long j = idx + 1;
+    while (j < n - 1 && j - idx <= 2 && !ends_in(at(words, j), ".,;:!?") &&
+           (contains(l.fora_bridge, S(words, j)) || ends_with(S(words, j), "mente"))) {
+        ++j;
+    }
+    if (j < n && is_participle(S(words, j))) return true;
+    std::string subject = prev_word;
+    long gap = 1;
+    if (contains(l.fora_bridge, prev_word) && idx > 1) {
+        subject = prev2(words, idx);  // "ele já fora rei"
+        gap = 2;
+    }
+    if (contains(l.fora_verb_prev, subject)) {
+        bool broken = false;
+        for (long k = std::max(0L, idx - gap); k < idx; ++k) broken = broken || ends_in(at(words, k), ".,;:!?");
+        if (!broken) return true;
+    }
+    const bool clause_start = idx == 2 || (idx > 2 && ends_in(at(words, idx - 3), ".,;:!?"));
+    return clause_start && contains(l.articles, prev2(words, idx)) && !ends_in(at(words, idx - 1), ".,;:!?") &&
+           !in(prev_word, {&t.DET, &t.QUANT, &t.PRON, &l.func_extra});
+}
+
 int score_noun(const Words& words, long idx) {
     const Lists& l = L();
     const data::Tables& t = l.t;
@@ -421,6 +469,10 @@ int score_verb(const Words& words, long idx) {
     const std::string next_word = next(words, idx);
     const std::string prev2_word = prev2(words, idx);
     const long n = size(words);
+
+    // "fora" takes none of the generic verb signals below: the adverb is the
+    // default reading, and only a cue of the pluperfect of ser/ir overrides it.
+    if (word == "fora") return fora_is_verb(words, idx) ? 8 : 0;
 
     int score = 0;
     if (idx == 0) score += 3;

@@ -21,7 +21,7 @@
 
 namespace bifonia {
 
-inline constexpr const char* kPythonReference = "bifonia 0.3.14a1";
+inline constexpr const char* kPythonReference = "bifonia 0.5.0";
 
 using Words = std::vector<std::string>;
 using WordSet = std::unordered_set<std::string>;
@@ -90,7 +90,8 @@ private:
 
 // ── data directory ───────────────────────────────────────────────────────────
 // The directory that holds heterophonic_homographs.csv, lect_overrides.csv,
-// infopedia_pt.csv, the two sense_model_*.json files and locale/<lang>/*.voc.
+// context_free_marks.csv, infopedia_pt.csv, the two sense_model_*.json files
+// and locale/<lang>/*.voc.
 // In order of precedence:
 // the value given to set_data_dir(), the environment variable
 // BIFONIA_DATA_DIR, the data directory of the install that holds the library
@@ -126,6 +127,7 @@ std::vector<bool> proper_flags(const std::string& text);
 // with rows in lect_overrides.csv (pt-BR, pt-UY and their sub-lects) takes the
 // override form of a word in every sense, and an empty form leaves it unmarked.
 // Each letter keeps its case: "ACORDO" gives "ACÔRDO" and "SeDe" gives "SéDe".
+// A word that is not a homograph takes its form from context_free_marks(lang).
 std::string add_extra_diacritics(const std::string& sentence, const std::optional<std::string>& lang = "pt-PT");
 // The data tables re-exported at the top level.
 const Dict<Dict<std::string>>& HOMOGRAPHS();
@@ -134,6 +136,7 @@ const Dict<Dict<std::vector<std::string>>>& POS_SENSES();
 const Dict<Dict<std::string>>& SENSE_POS();
 // Re-exported from data.
 const Dict<std::string>& lect_overrides(const std::optional<std::string>& lang);
+const Dict<std::string>& context_free_marks(const std::optional<std::string>& lang);
 
 // The diacritic table (Python: the private bifonia._DIACRITIZED) in its dict
 // order: each (base, sense) pair and the diacritized form that marks it.
@@ -154,10 +157,10 @@ void set_sense_model(std::shared_ptr<const model::SenseModel> sense_model);
 // ── bifonia.version ──────────────────────────────────────────────────────────
 namespace version {
 inline constexpr int VERSION_MAJOR = 0;
-inline constexpr int VERSION_MINOR = 3;
-inline constexpr int VERSION_BUILD = 14;
-inline constexpr int VERSION_ALPHA = 1;
-inline constexpr const char* VERSION_STR = "0.3.14a1";
+inline constexpr int VERSION_MINOR = 5;
+inline constexpr int VERSION_BUILD = 0;
+inline constexpr int VERSION_ALPHA = 0;
+inline constexpr const char* VERSION_STR = "0.5.0";
 }  // namespace version
 
 // ── bifonia.vocab ────────────────────────────────────────────────────────────
@@ -183,6 +186,7 @@ struct Tables {
     WordSet STOPPABLE_THINGS, DET, QUANT, PRON, AUX_VERBS, NUMERIC, SOBRE_GOV,
         NEVER_AFTER_PREP, PREP, BEFORE_PREP, AFTER_PREP;
     Dict<Dict<std::string>> LECT_OVERRIDES;               // lect tag → word → form
+    Dict<Dict<std::string>> CONTEXT_FREE_MARKS;           // lect code → word → form
 };
 // Loaded once from the data directory.
 const Tables& tables();
@@ -190,8 +194,14 @@ const Tables& tables();
 // its sub-lects, case-insensitively, with '_' read as '-', surrounding
 // whitespace ignored and a script subtag dropped: "pt_br", "pt-BR-x-rj" and
 // "pt-Latn-BR" all match pt-BR. No tag, an empty tag and a tag that matches no
-// lect give an empty map.
+// lect give an empty map. Of the lects that match, the longest one wins.
 const Dict<std::string>& lect_overrides(const std::optional<std::string>& lang);
+// The {word: form} marks that need no context (context_free_marks.csv) for a
+// lect tag. The tag is read as in lect_overrides and takes the rows of the
+// longest lect code that is the tag or its parent. No tag, an empty tag and
+// "pt" mean pt-PT. A tag of no lect in the table, pt-AO and pt-UY included,
+// gives an empty map.
+const Dict<std::string>& context_free_marks(const std::optional<std::string>& lang);
 }  // namespace data
 
 // ── bifonia.cues ─────────────────────────────────────────────────────────────

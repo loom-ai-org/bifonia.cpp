@@ -9,6 +9,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -576,6 +577,12 @@ std::string call_record(const Value& v) {
         return head + J(tag) + "," + guard([&] { return str_items(bf::lect_overrides(tag)); }) + "," +
                guard([&] { return str_items(bf::data::lect_overrides(tag)); }) + "]";
     }
+    if (fn == "CONTEXT_FREE_MARKS") return head + items(t.CONTEXT_FREE_MARKS, str_items) + "]";
+    if (fn == "context_free_marks") {
+        const auto tag = opt(v[1]);
+        return head + J(tag) + "," + guard([&] { return str_items(bf::context_free_marks(tag)); }) + "," +
+               guard([&] { return str_items(bf::data::context_free_marks(tag)); }) + "]";
+    }
     if (fn == "lect_diacritics") {
         const auto tag = opt(v[1]);
         const std::string s = v[2].str;
@@ -704,34 +711,43 @@ int detail_of(const Value& line) {
     return line[5][0][12].kind == Value::Array ? 2 : 1;
 }
 
-// The lect calls with lect_overrides.csv replaced by lect_nfd.csv, whose forms
-// are not in NFC. The tables are read once, from one directory, so the data
-// directory is copied under work_dir with that one file replaced.
+// The lect and mark calls with lect_overrides.csv and context_free_marks.csv
+// replaced by lect_nfd.csv and marks_nfd.csv, whose forms are not in NFC. The
+// tables are read once, from one directory, so the data directory is copied
+// under work_dir with those two files replaced.
 int run_lect_nfd(const std::string& dir, const std::string& work_dir) {
     namespace fs = std::filesystem;
     const fs::path data = fs::path(work_dir) / "lect_nfd_data";
     fs::remove_all(data);
     fs::copy(bf::data_dir(), data, fs::copy_options::recursive);
     fs::copy_file(dir + "/lect_nfd.csv", data / "lect_overrides.csv", fs::copy_options::overwrite_existing);
+    fs::copy_file(dir + "/marks_nfd.csv", data / "context_free_marks.csv", fs::copy_options::overwrite_existing);
     bf::set_data_dir(data.string());
     const Tally t = run(dir + "/lect_nfd.jsonl.gz", [](const std::string& line) { return call_record(json_line::parse(line)); });
     fs::remove_all(data);
     return (t.checked == t.expected && t.mismatches == 0) ? 0 : 1;
 }
 
-// Lect tables that the loader rejects. Each record holds the whole text of
-// lect_overrides.csv and the exception, with the message after the path of the
-// table. A rejected table leaves the tables unbuilt, so the next record loads
-// its own table.
+// Lect and mark tables that the loader rejects. Each record holds the whole
+// text of lect_overrides.csv ("lect_reject") or of context_free_marks.csv
+// ("marks_reject"), with the shipped other table, and the exception, with the
+// message after the path of the table. A rejected table leaves the tables
+// unbuilt, so the next record loads its own table.
 int run_lect_reject(const std::string& dir, const std::string& work_dir) {
     namespace fs = std::filesystem;
     const fs::path data = fs::path(work_dir) / "lect_reject_data";
     fs::remove_all(data);
     fs::copy(bf::data_dir(), data, fs::copy_options::recursive);
     bf::set_data_dir(data.string());
-    const std::string path = (data / "lect_overrides.csv").string();
+    const std::string lect_path = (data / "lect_overrides.csv").string();
+    std::ifstream shipped_in(lect_path, std::ios::binary);
+    const std::string lect_shipped((std::istreambuf_iterator<char>(shipped_in)), std::istreambuf_iterator<char>());
     const Tally t = run(dir + "/lect_reject.jsonl.gz", [&](const std::string& line) {
-        const std::string table = json_line::parse(line)[1].str;
+        const Value record = json_line::parse(line);
+        const std::string kind = record[0].str;
+        const std::string table = record[1].str;
+        const std::string path = kind == "marks_reject" ? (data / "context_free_marks.csv").string() : lect_path;
+        std::ofstream(lect_path, std::ios::binary) << lect_shipped;
         std::ofstream(path, std::ios::binary) << table;
         std::string error;
         try {
@@ -742,7 +758,7 @@ int run_lect_reject(const std::string& dir, const std::string& work_dir) {
             const bool at_path = msg.compare(0, path.size(), path) == 0;
             error = "{\"err\":\"ValueError\",\"msg\":" + J(at_path ? msg.substr(path.size()) : msg) + "}";
         }
-        return "[\"lect_reject\"," + J(table) + "," + error + "]";
+        return "[" + J(kind) + "," + J(table) + "," + error + "]";
     });
     fs::remove_all(data);
     return (t.checked == t.expected && t.mismatches == 0) ? 0 : 1;

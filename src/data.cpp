@@ -1,4 +1,5 @@
-// bifonia/data.py: the homograph table, its POS indexes and the context word lists.
+// bifonia/data.py: the homograph table, its POS indexes, the context word lists,
+// the lect overrides and the marks that need no context.
 #include <algorithm>
 
 #include "detail.hpp"
@@ -39,6 +40,36 @@ Dict<std::string> ipa_by_pos(const Tables& t, const std::string& pos) {
         }
     }
     return out;
+}
+
+// Python str.split("|"): empty fields are kept.
+std::vector<std::string> split(const std::string& field) {
+    std::vector<std::string> out;
+    size_t start = 0;
+    while (true) {
+        const size_t bar = field.find('|', start);
+        out.push_back(field.substr(start, bar == std::string::npos ? std::string::npos : bar - start));
+        if (bar == std::string::npos) return out;
+        start = bar + 1;
+    }
+}
+
+// data._form: the form in NFC, or ValueError when a letter of the word has no
+// code point of its own.
+std::string form_of(const std::string& path, long line, const std::string& word, const std::string& raw) {
+    const detail::U32 form = detail::nfc(detail::from_utf8(raw));
+    const std::string form_utf8 = detail::to_utf8(form);
+    const std::string where = path + ", line " + std::to_string(line) + ": the form " + detail::str_repr(form_utf8) +
+                              " of " + detail::str_repr(word);
+    const size_t word_len = detail::cp_len(word);
+    if (!form.empty() && form.size() != word_len) {
+        throw ValueError(where + " has " + std::to_string(form.size()) + " code points in NFC, but the word has " +
+                         std::to_string(word_len));
+    }
+    if (std::any_of(form.begin(), form.end(), [](char32_t c) { return detail::combining(c) != 0; })) {
+        throw ValueError(where + " keeps a combining mark in NFC");
+    }
+    return form_utf8;
 }
 
 Tables build() {
@@ -100,29 +131,32 @@ Tables build() {
     t.AFTER_PREP.insert(t.PRON.begin(), t.PRON.end());
     for (const auto& w : set_of("after_prep_exclude")) t.AFTER_PREP.erase(w);
 
+    // Read in NFC: add_extra_diacritics gives each code point of the form the
+    // case of the letter at the same position in the word. So each code point
+    // of the form must be one letter of the word: a form that is not as long as
+    // its word, or that keeps a combining mark, would lose letters.
     const std::string lect_path = detail::data_path("lect_overrides.csv");
     if (!detail::read_file(lect_path, text)) throw FileNotFoundError("cannot read " + lect_path);
     std::vector<long> lines;
-    const auto rows = detail::read_csv(text, &lines);
+    auto rows = detail::read_csv(text, &lines);
     for (size_t r = 0; r < rows.size(); ++r) {
-        // Read in NFC: add_extra_diacritics gives each code point of the form
-        // the case of the letter at the same position in the word. So each code
-        // point of the form must be one letter of the word: a form that is not
-        // as long as its word, or that keeps a combining mark, would lose letters.
         const std::string& word = column(rows[r], "word");
-        const detail::U32 form = detail::nfc(detail::from_utf8(column(rows[r], "form")));
-        const std::string form_utf8 = detail::to_utf8(form);
-        const std::string where = lect_path + ", line " + std::to_string(lines[r]) + ": the form " +
-                                  detail::str_repr(form_utf8) + " of " + detail::str_repr(word);
-        const size_t word_len = detail::cp_len(word);
-        if (!form.empty() && form.size() != word_len) {
-            throw ValueError(where + " has " + std::to_string(form.size()) + " code points in NFC, but the word has " +
-                             std::to_string(word_len));
+        t.LECT_OVERRIDES[column(rows[r], "lang")][word] = form_of(lect_path, lines[r], word, column(rows[r], "form"));
+    }
+
+    // The context table owns its words, so a row for one of them is rejected.
+    const std::string marks_path = detail::data_path("context_free_marks.csv");
+    if (!detail::read_file(marks_path, text)) throw FileNotFoundError("cannot read " + marks_path);
+    lines.clear();
+    rows = detail::read_csv(text, &lines);
+    for (size_t r = 0; r < rows.size(); ++r) {
+        const std::string& word = column(rows[r], "word");
+        if (detail::contains(t.AMBIGUOUS_WORDS, word)) {
+            throw ValueError(marks_path + ", line " + std::to_string(lines[r]) + ": " + detail::str_repr(word) +
+                             " belongs to the context table");
         }
-        if (std::any_of(form.begin(), form.end(), [](char32_t c) { return detail::combining(c) != 0; })) {
-            throw ValueError(where + " keeps a combining mark in NFC");
-        }
-        t.LECT_OVERRIDES[column(rows[r], "lang")][word] = form_utf8;
+        const std::string form = form_of(marks_path, lines[r], word, column(rows[r], "form"));
+        for (const auto& lect : split(column(rows[r], "lects"))) t.CONTEXT_FREE_MARKS[lect][word] = form;
     }
     return t;
 }
@@ -133,10 +167,10 @@ const Tables& tables() {
     return t;
 }
 
-const Dict<std::string>& lect_overrides(const std::optional<std::string>& lang) {
-    static const Dict<std::string> kNone;
-    if (!lang || lang->empty()) return kNone;
-    detail::U32 text = detail::from_utf8(detail::py_strip(*lang));
+namespace {
+// data._tag: lowercased, '-' for '_', surrounding whitespace and a script subtag dropped.
+detail::U32 lect_tag(const std::string& lang) {
+    detail::U32 text = detail::from_utf8(detail::py_strip(lang));
     std::replace(text.begin(), text.end(), U'_', U'-');
     text = detail::py_lower(text);
     std::vector<detail::U32> subtags{{}};
@@ -154,11 +188,40 @@ const Dict<std::string>& lect_overrides(const std::optional<std::string>& lang) 
     }
     detail::U32 tag;
     for (size_t i = 0; i < subtags.size(); ++i) tag += (i ? U"-" : U"") + subtags[i];
-    for (const auto& [lect, overrides] : tables().LECT_OVERRIDES.items()) {
+    return tag;
+}
+
+// data._for_lect: the entry of the longest lect that is the tag or a parent of
+// it. Of two matches of the same length, the first one in the table wins.
+const Dict<std::string>& for_lect(const Dict<Dict<std::string>>& table, const detail::U32& tag) {
+    static const Dict<std::string> kNone;
+    const Dict<std::string>* best = &kNone;
+    size_t best_len = 0;
+    bool found = false;
+    for (const auto& [lect, entry] : table.items()) {
         const detail::U32 name = detail::py_lower(detail::from_utf8(lect));
-        if (tag == name || tag.compare(0, name.size() + 1, name + U"-") == 0) return overrides;
+        if (tag != name && tag.compare(0, name.size() + 1, name + U"-") != 0) continue;
+        const size_t len = detail::from_utf8(lect).size();
+        if (!found || len > best_len) {
+            best = &entry;
+            best_len = len;
+            found = true;
+        }
     }
-    return kNone;
+    return *best;
+}
+}  // namespace
+
+const Dict<std::string>& lect_overrides(const std::optional<std::string>& lang) {
+    static const Dict<std::string> kNone;
+    if (!lang || lang->empty()) return kNone;
+    return for_lect(tables().LECT_OVERRIDES, lect_tag(*lang));
+}
+
+const Dict<std::string>& context_free_marks(const std::optional<std::string>& lang) {
+    detail::U32 tag = lang && !lang->empty() ? lect_tag(*lang) : U"pt-pt";
+    if (tag == U"pt") tag = U"pt-pt";
+    return for_lect(tables().CONTEXT_FREE_MARKS, tag);
 }
 
 }  // namespace bifonia::data
@@ -169,4 +232,7 @@ const WordSet& AMBIGUOUS_WORDS() { return data::tables().AMBIGUOUS_WORDS; }
 const Dict<Dict<std::vector<std::string>>>& POS_SENSES() { return data::tables().POS_SENSES; }
 const Dict<Dict<std::string>>& SENSE_POS() { return data::tables().SENSE_POS; }
 const Dict<std::string>& lect_overrides(const std::optional<std::string>& lang) { return data::lect_overrides(lang); }
+const Dict<std::string>& context_free_marks(const std::optional<std::string>& lang) {
+    return data::context_free_marks(lang);
+}
 }  // namespace bifonia

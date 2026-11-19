@@ -274,14 +274,16 @@ std::vector<bool> proper_flags(const std::string& text) {
 
 std::string add_extra_diacritics(const std::string& sentence, const std::optional<std::string>& lang) {
     const Dict<std::string>& overrides = lect_overrides(lang);
+    const Dict<std::string>& marks = context_free_marks(lang);
     const Words words = tokenize(sentence);
     const std::vector<bool> caps = proper_flags(sentence);
     std::map<size_t, std::string> replacements;
     for (size_t i = 0; i < words.size(); ++i) {
         const std::string base = strip_edge(words[i]);
-        if (!is_ambiguous(base)) continue;
         std::string diacritized;
-        if (const std::string* form = overrides.find(base)) {
+        if (!is_ambiguous(base)) {
+            if (const std::string* form = marks.find(base)) diacritized = *form;
+        } else if (const std::string* form = overrides.find(base)) {
             diacritized = *form;
         } else if (const auto sense = guess_sense(words, static_cast<long>(i), std::nullopt, caps[i])) {
             auto it = diacritics().forms.find({base, *sense});

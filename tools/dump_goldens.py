@@ -17,9 +17,11 @@ Files written to --out-dir:
                       infopedia, numeric probes, index probes, Unicode probes,
                       lect tags
   lect_nfd.csv        a lect_overrides.csv whose forms are not in NFC
-  lect_nfd.jsonl.gz   lect calls with lect_nfd.csv in place of the shipped table
-  lect_reject.jsonl.gz  lect tables that the loader rejects, with the line and
-                      the message of each rejection
+  marks_nfd.csv       a context_free_marks.csv whose forms are not in NFC
+  lect_nfd.jsonl.gz   lect and mark calls with lect_nfd.csv and marks_nfd.csv
+                      in place of the shipped tables
+  lect_reject.jsonl.gz  lect tables and mark tables that the loader rejects,
+                      with the line and the message of each rejection
 
 Sentence corpora:
   --test-sentences  bifonia tests/test_sentences.jsonl (each sentence as given,
@@ -28,7 +30,8 @@ Sentence corpora:
   generated         every homograph in sentence frames, every homograph and
                     diacritized form in mixed case, every homograph next to
                     words in capitals, every .voc term in context, the "molho"
-                    clause frames, and a seeded fuzz set
+                    clause frames, the "fora" cues, every word of
+                    context_free_marks.csv, and a seeded fuzz set
   fixtures          tests/fixtures/molho_probes.tsv (the reading of "molho")
 
 Usage:
@@ -188,6 +191,8 @@ VOC_TARGETS = {
     "pure_negation": ("para",), "sobre_governors": ("sobre",), "sobre_intensifiers": ("sobre",),
     "sobre_adp_quant": ("sobre",), "optative_adv": ("sobre",), "colher_control_verbs": ("colher",),
     "prep_governing": ("gozo",), "passive_aux": ("posto", "acordo"), "around_prep": ("torno",),
+    "fora_verb_prev": ("fora",), "fora_adverb_prev": ("fora",), "fora_adverb_next": ("fora",),
+    "fora_bridge_adverbs": ("fora",), "irregular_participles": ("fora",), "participle_lookalikes": ("fora",),
 }
 
 VOC_FRAMES = (
@@ -320,6 +325,60 @@ def proper_sentences():
         for frame in SENTENCE_END_FRAMES:
             yield frame.format(**forms)
     yield from SENTENCE_END_SENTENCES
+
+
+# The cues of the pluperfect of ser/ir against the adverb "fora": a participle
+# after it (also after one or two bridge adverbs), a subject, proclitic,
+# relative, "se" or negation before it (also before a bridge adverb), a
+# clause-initial article and noun, the adverb vetoes, enclitics, and
+# punctuation that breaks a cue.
+FORA_SENTENCES = (
+    "assim fora decidido", "fora então construída", "fora muito elogiado", "fora rapidamente aprovada",
+    "fora já, decidido", "fora então já decidido", "fora então já muito decidido", "fora então rapidamente",
+    "fora decidido", "fora decididos", "fora lado", "fora lados", "fora sábado", "fora dado", "fora ido",
+    "fora idos", "fora ída", "fora escrito", "fora aceites", "fora aceite.", "se ela fora rica",
+    "lhe fora dito", "o homem que fora", "ele já fora rei", "ele, já fora rei", "ele já, fora rei",
+    "já fora rei", "nunca fora tão feliz", "O dia fora longo", "Uma semana fora cansou-o",
+    "Ontem, o dia fora longo", "o dia fora longo", "ontem o dia fora longo", "O meu fora longo",
+    "O este fora longo", "O dia, fora longo", "para fora", "lá fora", "cá fora decidido",
+    "fora de casa", "fora daqui", "ele fora de casa", "fora-lhe dito", "fora-se embora", "fora -lhe",
+    "para fora-lhe", "que, fora a Netflix, tudo", "Fora!", "fora.", "ele fora.", "ele fora",
+    "FORA DECIDIDO", "Ele FORA decidido", "fôra decidido", "fóra de casa", "fora, decidido",
+    "ele fora bem decidido", "ele bem fora", "eu bem fora rei", "Se eu fora rico, fora feliz.",
+    "fora fora decidido", "fora mente", "fora finalmente", "fora finalmente aprovado",
+    "fora finalmente, aprovado", "fora", "-fora decidido", "o fora decidido",
+)
+
+
+def fora_sentences():
+    yield from FORA_SENTENCES
+    for term in sorted(vocab.voc("fora_bridge_adverbs")):
+        yield f"fora {term} decidido"
+        yield f"ele {term} fora rei"
+        yield f"fora {term} {term} decidido"
+    for term in sorted(vocab.voc("fora_verb_prev")):
+        yield f"{term} já fora rei"
+        yield f"{term}. fora rei"
+
+
+def mark_words():
+    """The words of context_free_marks.csv, in the order of the table."""
+    return list(dict.fromkeys(w for rows in data.CONTEXT_FREE_MARKS.values() for w in rows))
+
+
+MARK_FRAMES = ("{w}", "O {w} chegou.", "{w}, {w}!", "-{w} e o jogo", "Eu acordo cedo e {w}.")
+
+
+def mark_sentences():
+    """Each word with a mark that needs no context, in case variants and frames."""
+    forms = {f for rows in data.CONTEXT_FREE_MARKS.values() for f in rows.values()}
+    for word in mark_words():
+        variants = [word, word.capitalize(), word.upper(), word.swapcase().capitalize()]
+        variants += [f for f in sorted(forms) if unicodedata.normalize("NFD", f).encode("ascii", "ignore").decode()
+                     == unicodedata.normalize("NFD", word).encode("ascii", "ignore").decode()]
+        for v in dict.fromkeys(variants):
+            for frame in MARK_FRAMES:
+                yield frame.format(w=v)
 
 
 def voc_sentences():
@@ -839,6 +898,28 @@ LECT_SENTENCES = (
 )
 
 
+# Tags for context_free_marks: pt-PT and pt-BR and their sub-lects, a bare
+# "pt", parents of a sub-lect the table does not name, and lects with no rows.
+MARK_TAGS = (
+    None, "", " ", "pt", "PT", " pt ", "pt_PT", "pt-PT", "pt-pt", "pt-Latn", "pt-Latn-PT",
+    "pt-PT-x-acores", "pt-PT-x-sao-miguel", "pt-pt-x-sao-miguel-x", "pt-PT-x-foo", "pt-PT-x",
+    "pt-BR", "pt_br", "pt-BR-x-sp", "pt-br-x-sao-paulo", "pt-BR-x-foo", "pt-Latn-BR-x-rj",
+    "pt-BR-x-cuiaba", "pt-BR-x-cuiaba-x", "pt-AO", "pt-UY", "pt-MZ", "en", "pt-", "ptx", "x-pt-PT",
+)
+
+
+def mark_calls():
+    yield ["CONTEXT_FREE_MARKS", [[lect, list(rows.items())] for lect, rows in data.CONTEXT_FREE_MARKS.items()]]
+    words = mark_words()
+    sentences = (" ".join(words), " ".join(w.upper() for w in words), " ".join(w.capitalize() for w in words))
+    for tag in MARK_TAGS + LECT_TAGS:
+        yield ["context_free_marks", tag, probe(bifonia.context_free_marks, tag),
+               probe(data.context_free_marks, tag)]
+    for tag in MARK_TAGS:
+        for s in sentences:
+            yield ["lect_diacritics", tag, s, probe(bifonia.add_extra_diacritics, s, tag)]
+
+
 def lect_calls():
     yield ["LECT_OVERRIDES", [[lang, list(rows.items())] for lang, rows in data.LECT_OVERRIDES.items()]]
     spaces = [chr(cp) for cp in range(0x110000) if not 0xD800 <= cp <= 0xDFFF and chr(cp).isspace()]
@@ -877,9 +958,40 @@ LECT_NFD_ROWS = (
     ("pt-CV", "sede", "se\u0340de"),
     # an empty form, and marks of class 0, which the loader does not see
     ("pt-GW", "para", ""), ("pt-GW", "jogo", "jo\u034fg"), ("pt-GW", "sede", "s\ufe0fde"),
+    # a sub-lect, which wins over its parent, and a key of the same length,
+    # which loses to the first one
+    ("pt-AO-x-lu", "soma", "sóma"), ("PT-ao", "jogo", "jógo"),
 )
 
-LECT_NFD_TAGS = ("pt-BR", "pt-br-x-rj", "pt-UY", "pt-AO", "pt_ao", "pt-MZ", "pt-CV", "pt-GW", "pt-PT", None)
+LECT_NFD_TAGS = ("pt-BR", "pt-br-x-rj", "pt-UY", "pt-AO", "pt_ao", "pt-MZ", "pt-CV", "pt-GW", "pt-PT", None,
+                 "pt-AO-x-lu", "pt-ao-x-lu-x")
+
+# Marks that are not in NFC, and that load, in place of context_free_marks.csv:
+# the shipped rows in NFD, and rows for test lects. A mark of class 0 is not
+# seen by the loader, so its form loads and drops a letter. An empty lect code
+# matches the tag of a blank lect. Of two codes of the same length, the first
+# one wins.
+MARK_NFD_ROWS = (
+    ("alboio", "albo\u034fo", "pt-PT-x-t"), ("pinoio", "pin\ufe0fio", "pt-PT-x-t"),
+    ("loio", "", "pt-PT-x-t"), ("foio", "fo\u0301io", "pt-PT-x-t||PT-pt-X-T|pt-PT-x-t-y"),
+    ("joina", "jóina", "PT-pt-X-T|pt-PT-x-t"), ("paloio", "palóio", "pt-PT-x-t-y"),
+)
+
+MARK_NFD_TAGS = (None, "", " ", "pt", "pt-PT", "pt-BR", "pt-PT-x-t", "pt-pt-x-t-y", "pt-PT-x-t-z",
+                 "PT-PT-X-T", "pt-PT-x")
+
+
+def mark_nfd_rows():
+    with open(pathlib.Path(data.__file__).parent / "data" / "context_free_marks.csv", encoding="utf-8") as fh:
+        rows = [(r["word"], unicodedata.normalize("NFD", r["form"]), r["lects"]) for r in csv.DictReader(fh)]
+    return rows + list(MARK_NFD_ROWS)
+
+
+def write_mark_nfd_csv(path):
+    with open(path, "w", encoding="utf-8", newline="") as fh:
+        out = csv.writer(fh, lineterminator="\n")
+        out.writerow(("word", "form", "lects"))
+        out.writerows(mark_nfd_rows())
 
 LECT_NFD_SENTENCES = (
     "A soma dá dez.", "SOMA", "Soma tudo.", "sOmA", "O abono de família chegou.",
@@ -979,26 +1091,47 @@ def lect_reject_cases():
             yield head + table(("x-nfc", nfc_word(k, s), s))
 
 
+# Tables of marks that need no context that the loader rejects: a row for a
+# word of the context table, and the checks of the lect table. Each case is the
+# whole text of context_free_marks.csv.
+def marks_reject_cases():
+    shipped = (pathlib.Path(data.__file__).parent / "data" / "context_free_marks.csv").read_text(encoding="utf-8")
+    head = "word,form,lects\n"
+    for row in ("jogo,jôgo,pt-PT", "para,,pt-BR", "fora,fóra,pt-PT|pt-BR", "sede,sêde,", "acordo,acôrdo"):
+        yield head + row + "\n"
+        yield shipped + row + "\n"
+    for row in ("alboio,albóo,pt-PT", "alboio,alboi\u0331,pt-PT", "alboio,albo\u0301\u0302io,pt-PT",
+                "alboio,albóio ,pt-PT", "\"a'b\"\"c\",a'b,pt-BR", "x,\U0001d15e,pt-PT", "\"jo,go\",jôg,pt-PT"):
+        yield head + row + "\n"
+    yield head + "alboio,albóio,pt-PT\r\njogo,jôgo,pt-PT\r\n"
+    yield head + "alboio,\"alb\nóio\",pt-PT\npinoio,pinóio,pt-PT\nloio,lói,pt-PT"
+    yield shipped.replace("\n", "\r\n") + "alboio,albo,pt-PT\r\n"
+
+
 def lect_reject_records(package):
-    """Load each case of lect_reject_cases with the loader of the package copy in
-    package, and record the exception. A message starts with the path of the
-    table, which is dropped, so that the record does not hold the path."""
+    """Load each case of lect_reject_cases and marks_reject_cases with the loader
+    of the package copy in package, and record the exception. A message starts
+    with the path of the table, which is dropped, so that the record does not
+    hold the path."""
     loader = data
     assert loader.__file__.startswith(package)
-    path = loader._LECT_CSV
-    prefix = str(path)
-    for case in lect_reject_cases():
+    lect_shipped = loader._LECT_CSV.read_text(encoding="utf-8")
+    cases = [("lect_reject", loader._LECT_CSV, c) for c in lect_reject_cases()]
+    cases += [("marks_reject", loader._MARKS_CSV, c) for c in marks_reject_cases()]
+    for kind, path, case in cases:
+        loader._LECT_CSV.write_text(lect_shipped, encoding="utf-8")
         with open(path, "w", encoding="utf-8", newline="") as fh:
             fh.write(case)
+        prefix = str(path)
         try:
             importlib.reload(loader)
         except ValueError as exc:
             msg = str(exc)
             if not msg.startswith(prefix):
-                raise SystemExit(f"lect_reject: the message does not start with the path: {msg!r}")
-            yield ["lect_reject", case, {"err": type(exc).__name__, "msg": msg[len(prefix):]}]
+                raise SystemExit(f"{kind}: the message does not start with the path: {msg!r}")
+            yield [kind, case, {"err": type(exc).__name__, "msg": msg[len(prefix):]}]
         else:
-            raise SystemExit(f"lect_reject: the loader accepts {case!r}")
+            raise SystemExit(f"{kind}: the loader accepts {case!r}")
 
 
 def lect_reject_calls():
@@ -1023,18 +1156,28 @@ def lect_nfd_records():
     for tag in LECT_NFD_TAGS:
         for s in LECT_NFD_SENTENCES:
             yield ["lect_diacritics", tag, s, probe(bifonia.add_extra_diacritics, s, tag)]
+    yield ["CONTEXT_FREE_MARKS", [[lect, list(rows.items())] for lect, rows in data.CONTEXT_FREE_MARKS.items()]]
+    words = [r[0] for r in MARK_NFD_ROWS]
+    sentences = (" ".join(words), " ".join(w.upper() for w in words))
+    for tag in MARK_NFD_TAGS:
+        yield ["context_free_marks", tag, probe(bifonia.context_free_marks, tag),
+               probe(data.context_free_marks, tag)]
+        for s in sentences:
+            yield ["lect_diacritics", tag, s, probe(bifonia.add_extra_diacritics, s, tag)]
 
 
-def lect_nfd_calls(csv_path):
-    """lect_nfd_records with csv_path as the lect table.
+def lect_nfd_calls(csv_path, marks_path):
+    """lect_nfd_records with csv_path as the lect table and marks_path as the
+    table of marks that need no context.
 
-    The package reads the table at import, so a child interpreter imports a copy
-    of the package whose data/lect_overrides.csv is csv_path."""
+    The package reads the tables at import, so a child interpreter imports a
+    copy of the package whose data files are csv_path and marks_path."""
     with tempfile.TemporaryDirectory() as tmp:
         package = pathlib.Path(bifonia.__file__).parent
         shutil.copytree(package, pathlib.Path(tmp) / "bifonia",
                         ignore=shutil.ignore_patterns("__pycache__", "corpus.jsonl"))
         shutil.copyfile(csv_path, pathlib.Path(tmp) / "bifonia" / "data" / "lect_overrides.csv")
+        shutil.copyfile(marks_path, pathlib.Path(tmp) / "bifonia" / "data" / "context_free_marks.csv")
         code = ("import sys; sys.path[:0] = sys.argv[1:3]; import bifonia, dump_goldens; "
                 "assert bifonia.__file__.startswith(sys.argv[1]); "
                 "sys.stdout.reconfigure(encoding='utf-8'); "
@@ -1082,12 +1225,14 @@ def main():
     corpora["molho_probes"] = list(molho_probe_sentences())
     corpora["molho_frames"] = list(molho_sentences())
     corpora["proper_caps"] = list(proper_sentences())
+    corpora["fora"] = list(fora_sentences())
+    corpora["marks"] = list(mark_sentences())
 
     # Detail level per corpus: 2 keeps every field, 1 replaces the feature
     # list by its CRC-32, 0 replaces the whole homograph list by its CRC-32.
     # The C++ test computes the same CRC over the same bytes.
     levels = {"test_sentences": 2, "frames": 1, "extras": 2, "molho_probes": 2, "molho_frames": 1,
-              "proper_caps": 2}
+              "proper_caps": 2, "fora": 2, "marks": 1}
     seen, inputs, detail = set(), [], {}
     for name, sentences in corpora.items():
         before = len(inputs)
@@ -1111,7 +1256,8 @@ def main():
     for name, gen in (("tables", table_calls), ("infopedia", infopedia_calls),
                       ("text", text_calls), ("index", index_calls), ("probes", probe_calls),
                       ("bytes", byte_calls), ("byte_sets", byte_set_calls),
-                      ("cue_repr", cue_repr_calls), ("lect", lect_calls), ("fixtures", fixture_calls)):
+                      ("cue_repr", cue_repr_calls), ("lect", lect_calls), ("fixtures", fixture_calls),
+                      ("marks", mark_calls)):
         before = len(calls)
         calls.extend(dumps(c) for c in gen())
         print(f"calls/{name}: {len(calls) - before}", file=sys.stderr)
@@ -1119,15 +1265,17 @@ def main():
     print(f"calls: {len(calls)} in, {len(calls)} out", file=sys.stderr)
 
     write_lect_nfd_csv(out / "lect_nfd.csv")
-    nfd_rows = len(lect_nfd_rows())
-    nfd_calls = lect_nfd_calls(out / "lect_nfd.csv")
-    expected = 1 + len(LECT_NFD_TAGS) + 1 + len(LECT_NFD_TAGS) * len(LECT_NFD_SENTENCES)
+    write_mark_nfd_csv(out / "marks_nfd.csv")
+    nfd_rows = len(lect_nfd_rows()) + len(mark_nfd_rows())
+    nfd_calls = lect_nfd_calls(out / "lect_nfd.csv", out / "marks_nfd.csv")
+    expected = (1 + len(LECT_NFD_TAGS) + 1 + len(LECT_NFD_TAGS) * len(LECT_NFD_SENTENCES)
+                + 1 + len(MARK_NFD_TAGS) * 3)
     if len(nfd_calls) != expected:
         raise SystemExit(f"lect_nfd: {expected} calls expected, {len(nfd_calls)} written")
     write(out / "lect_nfd.jsonl.gz", nfd_calls, header)
     print(f"lect_nfd: {nfd_rows} rows, {expected} in, {len(nfd_calls)} out", file=sys.stderr)
 
-    reject_cases = sum(1 for _ in lect_reject_cases())
+    reject_cases = sum(1 for _ in lect_reject_cases()) + sum(1 for _ in marks_reject_cases())
     reject_calls = lect_reject_calls()
     if len(reject_calls) != reject_cases:
         raise SystemExit(f"lect_reject: {reject_cases} cases, {len(reject_calls)} written")
