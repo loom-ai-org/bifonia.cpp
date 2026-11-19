@@ -1,17 +1,17 @@
 # Parity with the Python package
 
 This library is held at byte parity with the Python `bifonia` release named in
-`kPythonReference` (`include/bifonia/bifonia.hpp`). The tests `parity` and
-`parity_lect_nfd` check that claim. They recompute every line of the golden
-files in `tests/goldens/` and compare the bytes. Each file must also hold the
-number of lines its header states.
+`kPythonReference` (`include/bifonia/bifonia.hpp`). The tests `parity`,
+`parity_lect_nfd` and `parity_lect_reject` check that claim. They recompute
+every line of the golden files in `tests/goldens/` and compare the bytes. Each
+file must also hold the number of lines its header states.
 
 ## Public surface
 
 The Python package has 11 modules: the package itself and `corpus`, `cues`,
 `data`, `features`, `infopedia`, `model`, `scoring`, `text`, `version` and
-`vocab`. Together they define 67 public names, counting each re-export once.
-The port has 63 of them. The 4 names of `corpus` are not ported, for the reason
+`vocab`. Together they define 69 public names, counting each re-export once.
+The port has 65 of them. The 4 names of `corpus` are not ported, for the reason
 given below.
 
 | Python | C++ |
@@ -25,6 +25,8 @@ given below.
 | `bifonia.add_extra_diacritics` | `bifonia::add_extra_diacritics` (an empty `std::optional` for `lang` where Python passes `None`) |
 | `HOMOGRAPHS`, `AMBIGUOUS_WORDS`, `POS_SENSES`, `SENSE_POS` (also in `data`) | `bifonia::HOMOGRAPHS()` and the others, and the members of `data::Tables` |
 | `lect_overrides` (also in `data`) | `bifonia::lect_overrides`, `data::lect_overrides` |
+| `context_free_marks` (also in `data`) | `bifonia::context_free_marks`, `data::context_free_marks` |
+| `data.CONTEXT_FREE_MARKS` | `data::Tables::CONTEXT_FREE_MARKS` |
 | `data.LECT_OVERRIDES` | `data::Tables::LECT_OVERRIDES` |
 | `data.SENSE_POSES`, `POS_AMBIGUOUS`, `VERBS_IPA`, `NOUNS_IPA`, `ADP_IPA`, `ADJ_IPA`, `DEFAULT_SENSE`, `DEFAULT_POS`, `BASE_SCORE` | members of `data::Tables`, from `data::tables()` |
 | `data.STOPPABLE_THINGS`, `DET`, `QUANT`, `PRON`, `AUX_VERBS`, `NUMERIC`, `SOBRE_GOV`, `NEVER_AFTER_PREP`, `PREP`, `BEFORE_PREP`, `AFTER_PREP` | members of `data::Tables` |
@@ -76,20 +78,24 @@ The table lists each public name whose behaviour differs between bifonia
 | Python | Difference |
 | --- | --- |
 | `add_extra_diacritics` | Takes `lang`, the lect tag. For a lect with rows in `lect_overrides.csv`, the override form replaces the marked form of the word in every sense, and an empty form leaves the word unmarked. Each letter of a marked word keeps its case: `ACORDO` gives `ACÔRDO` and `SeDe` gives `SéDe`. In 0.2.0a4 only the first letter keeps its case (`Acôrdo`). |
-| `lect_overrides`, `data.lect_overrides`, `data.LECT_OVERRIDES` | Added. The rows are for `pt-BR` and `pt-UY`. Each form is read in NFC, so a form in NFD has the length of its word. |
-| `tokenize` | Lowercases each token after the split. A code point whose lowercase is two code points (`İ`) no longer splits a token, so the tokens align with `proper_flags`. |
-| `proper_flags` | Reads the tokens `n.` and `º` as `nº`. The next token `no` or `n.º` no longer marks the first token. A word in capitals is not flagged in mid-sentence. An all-caps next token (an acronym, a roman numeral, an initial) marks the first word only when the first word is in title case: `Governo PS` flags `Governo`, and `GOVERNO PS` flags no word. A first word that ends in `.`, `!` or `?` is never flagged (`Jogo. Depois descanso.`). A colon does not stop the rule (`Governo: PS aprova orçamento.` flags `Governo`). |
+| `lect_overrides`, `data.lect_overrides`, `data.LECT_OVERRIDES` | Added. The rows are for `pt-BR` and `pt-UY`. Each form is read in NFC, so a form in NFD has the length of its word. A non-empty form that is not as long as its word in NFC, or that keeps a combining mark in NFC, raises `ValueError`. The message names the file, the line, the form and the word. Python raises it when the package is imported; C++ raises it from the first call that reads the tables. |
+| `tokenize` | Lowercases each token after the split. A code point whose lowercase is two code points (`İ`) no longer splits a token, so the tokens align with `proper_flags`. The punctuation after a word stays on the token also after the closing quotes `» ” ’ › " '` and the closing brackets `) ]`, which are dropped (`Jogo».` gives `jogo.`). `…` is punctuation and is written `...`. |
+| `proper_flags` | Uses the tokens of `tokenize`. A sentence ends at `.`, `!`, `?` or `...`, also after a closing quote or bracket. Each sentence start goes through the first-word rule, and so does the word after a colon (`Ele disse: Jogo amanhã.` flags no word). The first word of a sentence is flagged only when the next token continues a name or is `nº` or `nr`; the tokens `n.` and `º` read as `nº`. A bare number is not a title signal (`Bem. Choro 2 vezes por semana.` flags no word). An all-caps next token (an acronym, a roman numeral, an initial) marks the first word only when the first word is in title case: `Governo PS` flags `Governo`, and `GOVERNO PS` flags no word. A first word that ends its sentence is never flagged (`Jogo. Depois descanso.`, `«Jogo». Depois descanso.`, `Jogo… Depois descanso.`). A colon does not end the sentence of the word before it (`Governo: PS aprova orçamento.` flags `Governo`). After the first token, a lower-case word is never flagged (`Bem… jogo Bonito.`). Inside a sentence, a word in title case is flagged and a word in capitals is not. |
 | `guess_sense`, `guess_pos` | A diacritized form that marks several senses (`chôco`: addled and cuttlefish) narrows the choice, and the context picks among those senses. |
 | `scoring.score_noun` | Scores `molho` as a noun after an interrogative or a verb of lack or surplus, at the start of a clause with no direct object, and before `de` and a noun. |
 | `scoring.score_adp` | A number is a string of decimal digits with an optional leading `-` (`str.isdecimal`), or a number word. It was any string that `float()` accepts. |
 | `infopedia.ipa` | `pos` is a UD tag. A reading with that tag alone wins over a reading whose `|`-joined tags include it. |
 | `data.POS_SENSES`, `data.SENSE_POSES`, `data.VERBS_IPA`, `infopedia.load` | The verb molhar (`eu molho`) has the open vowel of the `bundle` sense, not the closed vowel of `sauce`. |
 | `vocab.voc` | 13 word lists added for `molho`. |
-| `version.VERSION_*` | 0.3.12a1. |
+| `add_extra_diacritics`, `context_free_marks`, `data.context_free_marks`, `data.CONTEXT_FREE_MARKS` | Added: a word that is not a homograph takes its mark from `context_free_marks.csv` (`pêra` for pt-PT, `assembléia`, `heróico` and `lingüiça` for pt-BR). A tag takes the rows of its longest matching lect code; no tag, an empty tag and `pt` mean pt-PT, and every lect other than pt-PT and pt-BR gets no marks. The loader rejects a row for a homograph and checks each form as it checks a lect override form. |
+| `lect_overrides` | Of the lects that match a tag, the longest one wins. It was the first one in the table. |
+| `HOMOGRAPHS`, `DEFAULT_POS`, `guess_pos`, `scoring.score_verb` | `fora` is a homograph: the adverb (`fóra`, POS `ADV`, the default) and the pluperfect of ser and ir (`fôra`, `VERB`). `score_verb` gives `fora` 8 with a cue of the verb and 0 without, and no other verb signal. |
+| `vocab.voc` | 6 word lists added for `fora`. |
+| `version.VERSION_*` | 0.5.0. |
 
 ## The sense models
 
-Both shipped models route every one of their 131 words to the rules
+Both shipped models route every one of their 132 words to the rules
 (`route == "rules"`). The model therefore never decides in default use: the
 check in `guess_sense` loads the perceptron and falls through to the rules. The
 port still carries the whole model path. The `forced` goldens copy the
@@ -192,21 +198,23 @@ null where the result equals the default.
 
 | Corpus | Inputs | Detail kept |
 | --- | ---: | --- |
-| test_sentences | 3,868 | bifonia `tests/test_sentences.jsonl`, each sentence as given and lowercased, every field |
-| test_sentences_case | 3,868 | the same sentences in capitals and with the case of each letter swapped, CRC-32 of the homograph fields |
-| hf_test | 60,953 | bifonia `hf/test.jsonl`, `sentence` and `diacritized_sentence`, CRC-32 of the homograph fields |
-| frames | 38,430 | every homograph, capitalised, upper-case and each diacritized form, in 42 sentence frames, CRC-32 of the features |
-| case | 12,413 | every homograph and each diacritized form in capitals and in three mixed-case patterns, in 8 sentence frames, CRC-32 of the homograph fields |
-| voc_cues | 68,291 | every term of every `.voc` file in 16 frames around the homographs that read it, CRC-32 of the homograph fields |
-| fuzz | 19,315 | seeded random sentences of homographs, cue terms, punctuation, case changes and Unicode, CRC-32 of the homograph fields |
-| extras | 372 | the locative contractions before `sede`, left neighbours of 3 code points and more bytes, and tokens that start with `İ`, every field |
+| test_sentences | 3,894 | bifonia `tests/test_sentences.jsonl`, each sentence as given and lowercased, every field |
+| test_sentences_case | 3,894 | the same sentences in capitals and with the case of each letter swapped, CRC-32 of the homograph fields |
+| hf_test | 61,039 | bifonia `hf/test.jsonl`, `sentence` and `diacritized_sentence`, CRC-32 of the homograph fields |
+| frames | 38,724 | every homograph, capitalised, upper-case and each diacritized form, in 42 sentence frames, CRC-32 of the features |
+| case | 12,508 | every homograph and each diacritized form in capitals and in three mixed-case patterns, in 8 sentence frames, CRC-32 of the homograph fields |
+| voc_cues | 72,747 | every term of every `.voc` file in 16 frames around the homographs that read it, CRC-32 of the homograph fields |
+| fuzz | 19,306 | seeded random sentences of homographs, cue terms, punctuation, case changes and Unicode, CRC-32 of the homograph fields |
+| extras | 370 | the locative contractions before `sede`, left neighbours of 3 code points and more bytes, and tokens that start with `İ`, every field |
 | molho_probes | 402 | `tests/fixtures/molho_probes.tsv`, sentences that test the reading of `molho`, every field |
-| molho_frames | 10,558 | each term of the 21 word lists that score `molho`, in 30 clause frames, CRC-32 of the features |
-| proper_caps | 5,239 | every homograph in title case, capitals, lower case, swapped case and mixed case, in 42 frames next to acronyms, roman numerals, initials and words in capitals, every field |
-| forced | 82,418 | the test sentences, frames, extras, `molho` and proper_caps sentences, and every seventh other sentence, with the model branch forced |
+| molho_frames | 10,559 | each term of the 21 word lists that score `molho`, in 30 clause frames, CRC-32 of the features |
+| proper_caps | 15,366 | every homograph in title case, capitals, lower case, swapped case and mixed case, in 42 frames next to acronyms, roman numerals, initials and words in capitals; then every homograph in 76 sentence-end frames and 69 fixed sentences: `…`, the closing quotes and brackets, later sentence starts, the word after a colon and in direct speech, lower-case words, a bare number against a roman numeral and `nº`, abbreviations, apostrophes inside a word, and tokens whose case rests on a title-case letter (`ǅ`, `ᾈ`) or on `ª`; every field |
+| fora | 142 | the cues of the pluperfect of ser and ir against the adverb `fora`: a participle after it, also after one or two bridge adverbs, a subject before it, the adverb vetoes, enclitics, a clause-initial article and noun, and punctuation that breaks a cue; every field |
+| marks | 2,339 | every word of `context_free_marks.csv` and its marked forms, in four cases and 5 frames, CRC-32 of the features |
+| forced | 96,010 | the test sentences, frames, extras, `molho`, proper_caps, `fora` and marks sentences, and every seventh other sentence, with the model branch forced |
 
 A CRC-32 field is the checksum of the same JSON text. The C++ test computes the
-same checksum. The file `calls.jsonl.gz` holds 79,262 direct calls:
+same checksum. The file `calls.jsonl.gz` holds 79,542 direct calls:
 
 - every data table, word list, cue table and model entry
 - the infopedia rows and every `ipa` lookup
@@ -217,6 +225,9 @@ same checksum. The file `calls.jsonl.gz` holds 79,262 direct calls:
 - the lect overrides table, and 127 lect tags through `lect_overrides` and
   through `add_extra_diacritics` on 22 sentences: each lect and sub-lect, case,
   `_`, whitespace, script subtags, and tags that only look like a lect
+- the table of marks that need no context, 100 lect tags through
+  `context_free_marks`, and 31 tags through `add_extra_diacritics` on every word
+  of the table
 - a four-letter script subtag at both ends of each `str.isalpha` range
 - each public function on hand-built arguments, with each error recorded by its
   Python class
@@ -229,15 +240,37 @@ same checksum. The file `calls.jsonl.gz` holds 79,262 direct calls:
   UTF-8.
 
 The test `parity_lect_nfd` copies the data directory, replaces
-`lect_overrides.csv` with `tests/goldens/lect_nfd.csv`, and checks the 182 calls
-in `lect_nfd.jsonl.gz`. The file holds 3,104 rows whose forms are not in NFC: the
-shipped rows in NFD, test lects whose marks NFC reorders or leaves uncomposed,
-and one form for each string that NFC changes (each primary composite in NFD,
-each code point that NFC replaces, Hangul jamo and 1,000 seeded runs of
-combining marks). The calls are the table, `lect_overrides` for 10 tags and
-`add_extra_diacritics` on 19 sentences for 9 tags. `tools/dump_goldens.py` writes
-the file, then reads it through a copy of the Python package in a child
+`lect_overrides.csv` with `tests/goldens/lect_nfd.csv` and
+`context_free_marks.csv` with `tests/goldens/marks_nfd.csv`, and checks the 276
+calls in `lect_nfd.jsonl.gz`. `lect_nfd.csv` holds 2,061 rows whose forms are not in NFC and
+that load: in NFC each form is as long as its word and keeps no combining mark.
+They are the shipped rows in NFD, test lects whose marks NFC reorders and
+composes, an empty form, forms with marks of class 0, and one form for each
+string that NFC changes and leaves without a combining mark (each primary
+composite in NFD, each code point that NFC replaces, Hangul jamo and seeded
+runs of combining marks), and a sub-lect and a lect key of the same length as
+another, which check that the longest match wins and that the first of two
+equal matches wins. `marks_nfd.csv` holds the 117 shipped rows in NFD and 6 rows
+for test lects: forms with marks of class 0 (U+034F, U+FE0F) that load and drop
+a letter, an empty form, an empty lect code and lect codes that tie. The calls
+are both tables, `lect_overrides` for 13 tags, `context_free_marks` for 11 tags
+and `add_extra_diacritics` on the lect and mark sentences. `tools/dump_goldens.py`
+writes the file, then reads it through a copy of the Python package in a child
 interpreter, because Python reads the table at import.
+
+The test `parity_lect_reject` checks the 1,096 tables in `lect_reject.jsonl.gz`
+that the loader rejects. Each record holds the whole text of
+`lect_overrides.csv` (1,076 records) or of `context_free_marks.csv` (20 records,
+with the shipped lect table) and the `ValueError` message after the path of the table:
+the line, the form and the word in Python's `repr`, and the reason. 26 tables
+have a form of the wrong length and 1,050 a form that keeps a combining mark,
+one for each string that NFC leaves with a mark. Of the mark tables, 10 have a
+row for a homograph, before and after the shipped rows, and 10 a form of the
+wrong length or with a combining mark. The bad row comes after the
+shipped rows, after blank lines, after a field that spans two lines, with CRLF
+or CR line ends, and on a last line with no newline. The test writes each table
+into a copy of the data directory and reads the tables again; a rejected table
+leaves the tables unbuilt, so each record loads its own table.
 
 To regenerate, install the reference release in a fresh virtual environment, then
 run:

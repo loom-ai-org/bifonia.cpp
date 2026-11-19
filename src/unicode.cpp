@@ -290,6 +290,7 @@ bool is_digit(char32_t c) { return in_ranges(kIsDigit, c); }
 bool is_alpha(char32_t c) { return in_ranges(kIsAlpha, c); }
 bool is_mn(char32_t c) { return in_ranges(kMn, c); }
 bool is_printable(char32_t c) { return in_ranges(kPrintable, c); }
+int combining(char32_t c) { return combining_class(c); }
 
 U32 nfd(const U32& text) {
     U32 out;
@@ -468,7 +469,8 @@ bool read_file(const std::string& path, std::string& out) {
     return true;
 }
 
-std::vector<std::vector<std::pair<std::string, std::string>>> read_csv(const std::string& raw) {
+std::vector<std::vector<std::pair<std::string, std::string>>> read_csv(const std::string& raw,
+                                                                       std::vector<long>* line_nums) {
     // Universal newlines first, as Python's text mode does.
     std::string text;
     text.reserve(raw.size());
@@ -483,8 +485,10 @@ std::vector<std::vector<std::pair<std::string, std::string>>> read_csv(const std
     // The csv module's state machine for the default dialect, not strict.
     enum State { StartRecord, StartField, InField, InQuoted, QuoteInQuoted };
     std::vector<std::vector<std::string>> records;
+    std::vector<long> record_lines;  // csv.reader.line_num after each record
     std::vector<std::string> record;
     std::string field;
+    long line = 0;
     State state = StartRecord;
     auto save_field = [&] {
         record.push_back(field);
@@ -492,9 +496,11 @@ std::vector<std::vector<std::pair<std::string, std::string>>> read_csv(const std
     };
     auto end_record = [&] {
         records.push_back(record);
+        record_lines.push_back(line);
         record.clear();
     };
     for (char c : text) {
+        if (c == '\n') ++line;
         switch (state) {
             case StartRecord:
                 if (c == '\n') break;  // an empty line yields no row
@@ -552,6 +558,7 @@ std::vector<std::vector<std::pair<std::string, std::string>>> read_csv(const std
         }
     }
     if (state != StartRecord) {
+        ++line;  // the last line has no newline
         save_field();
         end_record();
     }
@@ -565,6 +572,7 @@ std::vector<std::vector<std::pair<std::string, std::string>>> read_csv(const std
             row.emplace_back(header[k], k < records[r].size() ? records[r][k] : std::string());
         }
         rows.push_back(std::move(row));
+        if (line_nums != nullptr) line_nums->push_back(record_lines[r]);
     }
     return rows;
 }
